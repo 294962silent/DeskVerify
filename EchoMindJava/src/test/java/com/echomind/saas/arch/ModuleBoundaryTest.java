@@ -23,8 +23,14 @@ class ModuleBoundaryTest {
             // This handler is the stable translation boundary for typed platform failures.
             .and().doNotHaveSimpleName("GlobalApiExceptionHandler")
             .should().dependOnClassesThat().resideInAnyPackage(
+                    "java.sql..",
+                    "javax.sql..",
+                    "org.springframework.jdbc..",
+                    "org.springframework.data..",
                     "com.echomind.saas.platform..",
-                    "com.echomind.saas.identity.infrastructure.."
+                    "com.echomind.saas.identity.infrastructure..",
+                    "com.echomind.saas.infrastructure..",
+                    "com.echomind.saas..infrastructure.."
             );
 
     @ArchTest

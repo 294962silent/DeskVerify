@@ -143,21 +143,7 @@ class Task6bSecurityBoundaryTest {
                         Map.of()
                 ));
         when(orchestrator.run(any(AgentRequest.class), anyList(), any(ActorScope.class)))
-                .thenReturn(new OrchestratorResult(
-                        "request-result",
-                        "response",
-                        AgentType.GENERAL,
-                        IntentCategory.GREETING,
-                        false,
-                        1,
-                        List.of(AgentType.GENERAL),
-                        AgentType.GENERAL,
-                        List.of(),
-                        List.of(),
-                        List.of(),
-                        "test",
-                        1.0
-                ));
+                .thenReturn(orchestratorResult("request-result"));
         when(answerVerifier.verify(anyString(), anyString(), anyString()))
                 .thenReturn(new AnswerVerifier.VerificationResult(true, false, false, "test"));
         when(evaluator.run(any(), any())).thenReturn(Map.of("ok", true));
@@ -365,6 +351,54 @@ class Task6bSecurityBoundaryTest {
         assertThat(traceIds(adminBody)).containsExactly("request-b", "request-a");
     }
 
+    @Test
+    void sameJwtSubjectRecordsAndReadsTracesPerTenant() throws Exception {
+        when(orchestrator.run(any(AgentRequest.class), anyList(), any(ActorScope.class)))
+                .thenAnswer(invocation -> {
+                    ActorScope scope = invocation.getArgument(2);
+                    String requestId = switch (scope.tenantId().value()) {
+                        case "tenant-a" -> "request-a";
+                        case "tenant-b" -> "request-b";
+                        default -> throw new AssertionError("unexpected tenant");
+                    };
+                    traceStore.record(trace(requestId), scope);
+                    return orchestratorResult(requestId);
+                });
+
+        mvc.perform(post("/chat")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + token("customer-shared", "tenant-a"))
+                        .content("{\"message\":\"hello\",\"conv_id\":\"conversation-a\"}"))
+                .andExpect(status().isOk());
+        mvc.perform(post("/chat")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + token("customer-shared", "tenant-b"))
+                        .content("{\"message\":\"hello\",\"conv_id\":\"conversation-b\"}"))
+                .andExpect(status().isOk());
+
+        mvc.perform(get("/trace/request-a")
+                        .header("Authorization", "Bearer " + token("customer-shared", "tenant-a")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.trace.request_id").value("request-a"));
+        assertTraceNotFound("request-b", "customer-shared", "tenant-a");
+        mvc.perform(get("/trace/request-b")
+                        .header("Authorization", "Bearer " + token("customer-shared", "tenant-b")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.trace.request_id").value("request-b"));
+        assertTraceNotFound("request-a", "customer-shared", "tenant-b");
+
+        String recentA = mvc.perform(get("/trace/recent")
+                        .header("Authorization", "Bearer " + token("customer-shared", "tenant-a")))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+        String recentB = mvc.perform(get("/trace/recent")
+                        .header("Authorization", "Bearer " + token("customer-shared", "tenant-b")))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+        assertThat(traceIds(recentA)).containsExactly("request-a");
+        assertThat(traceIds(recentB)).containsExactly("request-b");
+    }
+
     private String submitEvaluation(String userId, String tenantId) throws Exception {
         String body = mvc.perform(post("/eval/jobs")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -427,6 +461,23 @@ class Task6bSecurityBoundaryTest {
                 false,
                 false,
                 1);
+    }
+
+    private static OrchestratorResult orchestratorResult(String requestId) {
+        return new OrchestratorResult(
+                requestId,
+                "response",
+                AgentType.GENERAL,
+                IntentCategory.GREETING,
+                false,
+                1,
+                List.of(AgentType.GENERAL),
+                AgentType.GENERAL,
+                List.of(),
+                List.of(),
+                List.of(),
+                "test",
+                1.0);
     }
 
     private static ActorScope actor(String tenantId, String userId, ActorRole role) {
