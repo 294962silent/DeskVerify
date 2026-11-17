@@ -2,6 +2,7 @@ package com.echomind.saas.identity.infrastructure;
 
 import com.echomind.saas.identity.domain.TenantId;
 import com.echomind.saas.identity.domain.UserId;
+import com.echomind.saas.testsupport.MySqlTestContainers;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -17,8 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class JdbcTenantMembershipRepositoryTest {
 
     @Container
-    static final MySQLContainer<?> MYSQL =
-            new MySQLContainer<>("mysql:8.4").withDatabaseName("echomind");
+    static final MySQLContainer<?> MYSQL = MySqlTestContainers.create();
 
     private JdbcTemplate jdbc;
     private JdbcTenantMembershipRepository repository;

@@ -1,5 +1,6 @@
 package com.echomind.saas.platform.persistence;
 
+import com.echomind.saas.testsupport.MySqlTestContainers;
 import java.sql.DriverManager;
 import java.util.List;
 import org.flywaydb.core.Flyway;
@@ -14,8 +15,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class FlywayMigrationTest {
 
     @Container
-    static final MySQLContainer<?> MYSQL =
-            new MySQLContainer<>("mysql:8.4").withDatabaseName("echomind");
+    static final MySQLContainer<?> MYSQL = MySqlTestContainers.create();
 
     @Test
     void appliesIdentityAndMessagingSchema() throws Exception {

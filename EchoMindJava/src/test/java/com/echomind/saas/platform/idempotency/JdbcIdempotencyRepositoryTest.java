@@ -1,6 +1,7 @@
 package com.echomind.saas.platform.idempotency;
 
 import com.echomind.saas.identity.domain.TenantId;
+import com.echomind.saas.testsupport.MySqlTestContainers;
 import java.time.Instant;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeEach;
@@ -18,8 +19,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class JdbcIdempotencyRepositoryTest {
 
     @Container
-    static final MySQLContainer<?> MYSQL =
-            new MySQLContainer<>("mysql:8.4").withDatabaseName("echomind");
+    static final MySQLContainer<?> MYSQL = MySqlTestContainers.create();
 
     private JdbcIdempotencyRepository repository;
     private JdbcTemplate jdbc;

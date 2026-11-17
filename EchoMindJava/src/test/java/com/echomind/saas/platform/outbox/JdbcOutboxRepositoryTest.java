@@ -1,9 +1,14 @@
 package com.echomind.saas.platform.outbox;
 
 import com.echomind.saas.identity.domain.TenantId;
+import com.echomind.saas.testsupport.MySqlTestContainers;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -20,10 +25,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class JdbcOutboxRepositoryTest {
 
     private static final Instant AVAILABLE_AT = Instant.parse("2025-01-01T00:00:00.123456Z");
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     @Container
-    static final MySQLContainer<?> MYSQL =
-            new MySQLContainer<>("mysql:8.4").withDatabaseName("echomind");
+    static final MySQLContainer<?> MYSQL = MySqlTestContainers.create();
 
     private JdbcOutboxRepository repository;
     private JdbcTemplate jdbc;
@@ -47,9 +52,9 @@ class JdbcOutboxRepositoryTest {
 
         repository.append(message);
 
-        assertThat(repository.claimPending(
-                        10, "lease-owner", Instant.now().plusSeconds(3600)))
-                .containsExactly(message);
+        assertMessagesContainExactly(
+                repository.claimPending(10, "lease-owner", Instant.now().plusSeconds(3600)),
+                message);
     }
 
     @Test
@@ -75,9 +80,9 @@ class JdbcOutboxRepositoryTest {
                 "00000000-0000-0000-0000-000000000001", "ticket.created");
         repository.append(message);
 
-        assertThat(repository.claimPending(
-                        10, "owner-a", Instant.now().plusSeconds(3600)))
-                .containsExactly(message);
+        assertMessagesContainExactly(
+                repository.claimPending(10, "owner-a", Instant.now().plusSeconds(3600)),
+                message);
         assertThat(repository.claimPending(
                         10, "owner-b", Instant.now().plusSeconds(3600)))
                 .isEmpty();
@@ -89,12 +94,12 @@ class JdbcOutboxRepositoryTest {
                 "00000000-0000-0000-0000-000000000001", "ticket.created");
         repository.append(message);
 
-        assertThat(repository.claimPending(
-                        10, "owner-a", Instant.now().minusSeconds(1)))
-                .containsExactly(message);
-        assertThat(repository.claimPending(
-                        10, "owner-b", Instant.now().plusSeconds(3600)))
-                .containsExactly(message);
+        assertMessagesContainExactly(
+                repository.claimPending(10, "owner-a", Instant.now().minusSeconds(1)),
+                message);
+        assertMessagesContainExactly(
+                repository.claimPending(10, "owner-b", Instant.now().plusSeconds(3600)),
+                message);
         assertThat(jdbc.queryForObject("""
                 select attempts from outbox_event where id = ?
                 """, Integer.class, message.id())).isEqualTo(2);
@@ -158,5 +163,31 @@ class JdbcOutboxRepositoryTest {
                 eventType,
                 "{\"ticketId\":\"ticket-1\"}",
                 AVAILABLE_AT);
+    }
+
+    private static void assertMessagesContainExactly(
+            List<OutboxMessage> actual, OutboxMessage... expected) {
+        assertThat(actual).hasSameSizeAs(expected);
+        for (int index = 0; index < expected.length; index++) {
+            assertMessageFields(actual.get(index), expected[index]);
+        }
+    }
+
+    private static void assertMessageFields(OutboxMessage actual, OutboxMessage expected) {
+        assertThat(actual.id()).isEqualTo(expected.id());
+        assertThat(actual.tenantId()).isEqualTo(expected.tenantId());
+        assertThat(actual.aggregateType()).isEqualTo(expected.aggregateType());
+        assertThat(actual.aggregateId()).isEqualTo(expected.aggregateId());
+        assertThat(actual.eventType()).isEqualTo(expected.eventType());
+        assertThat(readJson(actual.payloadJson())).isEqualTo(readJson(expected.payloadJson()));
+        assertThat(actual.availableAt()).isEqualTo(expected.availableAt());
+    }
+
+    private static JsonNode readJson(String value) {
+        try {
+            return OBJECT_MAPPER.readTree(value);
+        } catch (JsonProcessingException exception) {
+            throw new AssertionError("invalid JSON payload", exception);
+        }
     }
 }
