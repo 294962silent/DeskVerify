@@ -60,6 +60,12 @@ public final class SaasSecurityConfiguration {
                                 "/swagger-ui/**",
                                 "/v3/api-docs/**"
                         ).permitAll()
+                        .requestMatchers(
+                                "/knowledge/**",
+                                "/skills/reload",
+                                "/metrics",
+                                "/eval/**"
+                        ).hasRole("TENANT_ADMIN")
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .authenticationEntryPoint(authenticationFailureResponder::commence)

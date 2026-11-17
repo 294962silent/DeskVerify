@@ -23,6 +23,7 @@ import com.echomind.saas.identity.application.ActorScopeResolver;
 import com.echomind.saas.identity.application.TenantAccessDeniedException;
 import com.echomind.saas.identity.domain.ActorRole;
 import com.echomind.saas.identity.domain.ActorScope;
+import com.echomind.saas.identity.domain.TenantScopedActorKey;
 import com.echomind.saas.identity.domain.UserId;
 import com.echomind.saas.identity.security.SaasSecurityConfiguration;
 import com.echomind.skill.SkillManager;
@@ -227,7 +228,7 @@ class AuthenticatedActorBoundaryTest {
 
     @Test
     void evaluationUsesAuthenticatedActorInsteadOfBodyIdentity() throws Exception {
-        when(evaluator.run(any(EvalRunRequest.class), any(UserId.class))).thenReturn(Map.of("ok", true));
+        when(evaluator.run(any(EvalRunRequest.class), any(TenantScopedActorKey.class))).thenReturn(Map.of("ok", true));
 
         mvc.perform(post("/eval/run")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -237,9 +238,9 @@ class AuthenticatedActorBoundaryTest {
                                 """))
                 .andExpect(status().isOk());
 
-        ArgumentCaptor<UserId> userCaptor = ArgumentCaptor.forClass(UserId.class);
-        verify(evaluator).run(any(EvalRunRequest.class), userCaptor.capture());
-        assertThat(userCaptor.getValue().value()).isEqualTo("user-1");
+        ArgumentCaptor<TenantScopedActorKey> actorKeyCaptor = ArgumentCaptor.forClass(TenantScopedActorKey.class);
+        verify(evaluator).run(any(EvalRunRequest.class), actorKeyCaptor.capture());
+        assertThat(actorKeyCaptor.getValue().value()).isEqualTo("tenant:tenant-a/user:user-1");
     }
 
     @ParameterizedTest(name = "{0}")

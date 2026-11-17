@@ -32,3 +32,13 @@ export function withAuthorization(type, options = {}, storage = globalThis.sessi
     }
   }
 }
+
+export async function authorizedFetch(
+  url,
+  type,
+  options = {},
+  storage = globalThis.sessionStorage,
+  fetchImpl = globalThis.fetch
+) {
+  return fetchImpl(url, withAuthorization(type, options, storage))
+}

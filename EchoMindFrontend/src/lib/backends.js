@@ -1,4 +1,4 @@
-import { withAuthorization } from './auth.js'
+import { authorizedFetch } from './auth.js'
 
 const DEFAULT_BACKENDS = {
   python: {
@@ -164,7 +164,7 @@ function normalizeToolTraceResponse(raw) {
 
 async function requestJson(type, baseUrl, path, options = {}) {
   const url = `${normalizeBaseUrl(baseUrl)}${path}`
-  const response = await fetch(url, withAuthorization(type, options))
+  const response = await authorizedFetch(url, type, options)
   const text = await response.text()
   let data = null
   try {

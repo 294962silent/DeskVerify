@@ -291,7 +291,8 @@ public class EchoMindController {
     public Map<String, Object> eval(
             @RequestBody(required = false) EvalRunRequest request,
             @AuthenticationPrincipal ActorScope actorScope) {
-        return evaluator.run(request, actorScope.userId());
+        return evaluator.run(request, new TenantScopedActorKey(
+                actorScope.tenantId(), actorScope.userId()));
     }
 
     private boolean shouldUseKnowledge(IntentCategory intent) {

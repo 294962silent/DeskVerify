@@ -6,6 +6,7 @@ import com.echomind.saas.api.error.ResourceNotFoundException;
 import com.echomind.saas.evaluation.domain.EvaluationJob;
 import com.echomind.saas.identity.domain.ActorScope;
 import com.echomind.saas.identity.domain.TenantId;
+import com.echomind.saas.identity.domain.TenantScopedActorKey;
 import com.echomind.saas.identity.domain.UserId;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -27,6 +28,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.stream.Collectors;
 
 /**
  * 把耗时的端到端评测从 HTTP 请求生命周期中拆出。
@@ -36,7 +38,7 @@ import java.util.concurrent.Executors;
 public class EvaluationJobService {
 
     private static final Logger log = LoggerFactory.getLogger(EvaluationJobService.class);
-    private static final int MAX_STORED_JOBS = 20;
+    private static final int MAX_STORED_JOBS_PER_OWNER = 20;
 
     private final EndToEndEvaluator evaluator;
     private final ObjectMapper objectMapper;
@@ -76,6 +78,14 @@ public class EvaluationJobService {
         }
 
         boolean changed = false;
+        List<String> legacyJobIds = jobs.entrySet().stream()
+                .filter(entry -> !hasValidOwnership(entry.getValue()))
+                .map(Map.Entry::getKey)
+                .toList();
+        if (!legacyJobIds.isEmpty()) {
+            legacyJobIds.forEach(jobs::remove);
+            changed = true;
+        }
         for (Map<String, Object> job : jobs.values()) {
             String status = String.valueOf(job.get("status"));
             if ("queued".equals(status) || "running".equals(status)) {
@@ -86,7 +96,7 @@ public class EvaluationJobService {
                 changed = true;
             }
         }
-        trim();
+        changed |= trim();
         if (changed) {
             save();
         }
@@ -112,7 +122,9 @@ public class EvaluationJobService {
         jobs.put(jobId, job);
         trim();
         save();
-        executor.submit(() -> execute(jobId, request, actor.userId()));
+        TenantScopedActorKey actorKey = new TenantScopedActorKey(
+                actor.tenantId(), actor.userId());
+        executor.submit(() -> execute(jobId, request, actorKey));
         return publicJob(job);
     }
 
@@ -128,14 +140,14 @@ public class EvaluationJobService {
     }
 
     public List<EvaluationJob> list(ActorScope actor) {
-        return list(actor, MAX_STORED_JOBS);
+        return list(actor, MAX_STORED_JOBS_PER_OWNER);
     }
 
     public List<EvaluationJob> list(ActorScope actor, int limit) {
         if (actor == null) {
             throw new IllegalArgumentException("authenticated actor is required");
         }
-        int boundedLimit = Math.max(1, Math.min(limit, MAX_STORED_JOBS));
+        int boundedLimit = Math.max(1, Math.min(limit, MAX_STORED_JOBS_PER_OWNER));
         return jobs.values().stream()
                 .filter(job -> ownedBy(job, actor))
                 .sorted(Comparator.comparing(job -> String.valueOf(job.getOrDefault("created_at", "")), Comparator.reverseOrder()))
@@ -159,7 +171,7 @@ public class EvaluationJobService {
         save();
     }
 
-    private void execute(String jobId, EvalRunRequest request, UserId authenticatedUserId) {
+    private void execute(String jobId, EvalRunRequest request, TenantScopedActorKey actorKey) {
         Map<String, Object> job = jobs.get(jobId);
         if (job == null) {
             return;
@@ -172,7 +184,7 @@ public class EvaluationJobService {
             save();
         }
         try {
-            Map<String, Object> report = evaluator.run(request, authenticatedUserId);
+            Map<String, Object> report = evaluator.run(request, actorKey);
             synchronized (this) {
                 job.put("status", "succeeded");
                 job.put("phase", "completed");
@@ -205,16 +217,25 @@ public class EvaluationJobService {
         }
     }
 
-    private void trim() {
-        if (jobs.size() <= MAX_STORED_JOBS) {
-            return;
+    private boolean trim() {
+        boolean changed = false;
+        Map<OwnerKey, List<Map<String, Object>>> byOwner = jobs.values().stream()
+                .collect(Collectors.groupingBy(this::ownerKey));
+        for (List<Map<String, Object>> ownerJobs : byOwner.values()) {
+            if (ownerJobs.size() <= MAX_STORED_JOBS_PER_OWNER) {
+                continue;
+            }
+            List<String> expiredIds = ownerJobs.stream()
+                    .sorted(Comparator.comparing(
+                            job -> String.valueOf(job.getOrDefault("created_at", "")),
+                            Comparator.reverseOrder()))
+                    .skip(MAX_STORED_JOBS_PER_OWNER)
+                    .map(job -> String.valueOf(job.get("job_id")))
+                    .toList();
+            expiredIds.forEach(jobs::remove);
+            changed |= !expiredIds.isEmpty();
         }
-        List<Map<String, Object>> keep = jobs.values().stream()
-                .sorted(Comparator.comparing(job -> String.valueOf(job.getOrDefault("created_at", "")), Comparator.reverseOrder()))
-                .limit(MAX_STORED_JOBS)
-                .toList();
-        jobs.clear();
-        keep.forEach(job -> jobs.put(String.valueOf(job.get("job_id")), job));
+        return changed;
     }
 
     @SuppressWarnings("unchecked")
@@ -243,6 +264,28 @@ public class EvaluationJobService {
                 && actor.userId().value().equals(job.get("owner_user_id"));
     }
 
+    private boolean hasValidOwnership(Map<String, Object> job) {
+        Object tenantId = job.get("tenant_id");
+        Object ownerUserId = job.get("owner_user_id");
+        if (!(tenantId instanceof String tenantValue) || tenantValue.isBlank()
+                || !(ownerUserId instanceof String ownerValue) || ownerValue.isBlank()) {
+            return false;
+        }
+        try {
+            new TenantId(tenantValue);
+            new UserId(ownerValue);
+            return true;
+        } catch (IllegalArgumentException exception) {
+            return false;
+        }
+    }
+
+    private OwnerKey ownerKey(Map<String, Object> job) {
+        return new OwnerKey(
+                String.valueOf(job.get("tenant_id")),
+                String.valueOf(job.get("owner_user_id")));
+    }
+
     private String nullableString(Object value) {
         return value == null ? null : String.valueOf(value);
     }
@@ -253,5 +296,8 @@ public class EvaluationJobService {
 
     private String now() {
         return Instant.now().toString();
+    }
+
+    private record OwnerKey(String tenantId, String ownerUserId) {
     }
 }

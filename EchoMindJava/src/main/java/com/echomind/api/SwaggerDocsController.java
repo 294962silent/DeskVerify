@@ -4,11 +4,17 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.web.servlet.view.RedirectView;
 
 @Controller
 public class SwaggerDocsController {
 
-    @GetMapping(value = "/docs", produces = MediaType.TEXT_HTML_VALUE)
+    @GetMapping("/swagger-ui.html")
+    public RedirectView swaggerUiRedirect() {
+        return new RedirectView("/swagger-ui/index.html");
+    }
+
+    @GetMapping(value = {"/docs", "/swagger-ui/index.html"}, produces = MediaType.TEXT_HTML_VALUE)
     @ResponseBody
     public String docs() {
         return """

@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { javaAuthHeaders, saveAccessToken } from './auth.js'
+import { authorizedFetch, javaAuthHeaders, saveAccessToken } from './auth.js'
 
 function storage(initial = {}) {
   const values = new Map(Object.entries(initial))
@@ -30,4 +30,45 @@ test('operator token is stored only in session storage', () => {
   const session = storage()
   saveAccessToken('operator-token', session)
   assert.equal(session.getItem('echomind_access_token'), 'operator-token')
+})
+
+test('Java transport sends the bearer header to mocked fetch', async () => {
+  const calls = []
+  const fetchImpl = async (...args) => {
+    calls.push(args)
+    return new Response('{}', { status: 200 })
+  }
+  const session = storage({ echomind_access_token: 'test-token' })
+
+  await authorizedFetch('/api/java/health', 'java', {}, session, fetchImpl)
+
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0][1].headers.Authorization, 'Bearer test-token')
+})
+
+test('missing Java token rejects before mocked fetch is called', async () => {
+  let fetchCalls = 0
+  const fetchImpl = async () => {
+    fetchCalls++
+    return new Response('{}', { status: 200 })
+  }
+
+  await assert.rejects(
+    authorizedFetch('/api/java/health', 'java', {}, storage(), fetchImpl),
+    /Java backend requires an access token/
+  )
+  assert.equal(fetchCalls, 0)
+})
+
+test('Python transport sends no bearer header', async () => {
+  const calls = []
+  const fetchImpl = async (...args) => {
+    calls.push(args)
+    return new Response('{}', { status: 200 })
+  }
+
+  await authorizedFetch('/api/python/health', 'python', {}, storage(), fetchImpl)
+
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0][1].headers.Authorization, undefined)
 })

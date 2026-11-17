@@ -8,7 +8,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.echomind.intent.IntentRecognizer;
 import com.echomind.intent.IntentResult;
-import com.echomind.saas.identity.domain.UserId;
+import com.echomind.saas.identity.domain.TenantScopedActorKey;
 import org.springframework.stereotype.Service;
 
 import java.nio.file.Files;
@@ -39,9 +39,9 @@ public class EndToEndEvaluator {
         this.properties = properties;
     }
 
-    public Map<String, Object> run(EvalRunRequest request, UserId authenticatedUserId) {
-        if (authenticatedUserId == null) {
-            throw new IllegalArgumentException("authenticated user is required");
+    public Map<String, Object> run(EvalRunRequest request, TenantScopedActorKey actorKey) {
+        if (actorKey == null) {
+            throw new IllegalArgumentException("tenant-scoped actor is required");
         }
         List<EvalRunRequest.IntentCase> intentCases = request != null && request.intentCases() != null
                 ? request.intentCases()
@@ -73,7 +73,7 @@ public class EndToEndEvaluator {
             List<String> turns = c.turns() != null && !c.turns().isEmpty() ? c.turns() : List.of(c.question());
             List<Map<String, String>> history = new ArrayList<>();
             String convId = c.conversationId() == null ? "eval_" + UUID.randomUUID() : c.conversationId();
-            String userId = authenticatedUserId.value();
+            String userId = actorKey.value();
             for (String turn : turns) {
                 var response = orchestrator.run(AgentRequest.of(turn, userId, convId, history.toString(), history));
                 QualityScores scores = judge.judge(turn, response.response(), history.toString());

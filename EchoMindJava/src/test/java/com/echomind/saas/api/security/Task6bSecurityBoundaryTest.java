@@ -164,10 +164,12 @@ class Task6bSecurityBoundaryTest {
         String secondJobId = submitEvaluation("user-b", "tenant-a");
         String thirdJobId = submitEvaluation("user-c", "tenant-b");
 
-        mvc.perform(get("/eval/jobs/{jobId}", firstJobId)
+        String getBody = mvc.perform(get("/eval/jobs/{jobId}", firstJobId)
                         .header("Authorization", "Bearer " + token("user-a", "tenant-a")))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.job_id").value(firstJobId));
+                .andExpect(jsonPath("$.job_id").value(firstJobId))
+                .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+        assertNoOwnershipFields(getBody);
 
         assertNotFound(firstJobId, "user-b", "tenant-a");
         assertNotFound(firstJobId, "user-c", "tenant-b");
@@ -177,10 +179,58 @@ class Task6bSecurityBoundaryTest {
                         .header("Authorization", "Bearer " + token("user-a", "tenant-a")))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+        assertNoOwnershipFields(body);
         List<Map<String, Object>> items = objectMapper.readValue(
                 objectMapper.readTree(body).get("items").toString(), new TypeReference<>() { });
         List<String> jobIds = items.stream().map(item -> String.valueOf(item.get("job_id"))).toList();
         assertThat(jobIds).contains(firstJobId).doesNotContain(secondJobId, thirdJobId);
+    }
+
+    @Test
+    void customerMalformedEvalBodyIsForbiddenBeforeMvcBinding() throws Exception {
+        mvc.perform(post("/eval/run")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + token("customer-a", "tenant-a"))
+                        .content("{"))
+                .andExpect(status().isForbidden())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.code").value("ACCESS_DENIED"))
+                .andExpect(jsonPath("$.message").value("access denied"))
+                .andExpect(jsonPath("$.retryable").value(false));
+    }
+
+    @Test
+    void customerMalformedKnowledgeBodyIsForbiddenBeforeMvcBinding() throws Exception {
+        mvc.perform(post("/knowledge/add")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + token("customer-a", "tenant-a"))
+                        .content("{"))
+                .andExpect(status().isForbidden())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
+    }
+
+    @Test
+    void unauthenticatedMalformedBodyIsRejectedBeforeMvcBinding() throws Exception {
+        mvc.perform(post("/knowledge/add")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.code").value("AUTHENTICATION_REQUIRED"));
+    }
+
+    @Test
+    void adminMalformedBodyReachesMvcValidation() throws Exception {
+        mvc.perform(post("/eval/run")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + token("admin-a", "tenant-a"))
+                        .content("{"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.message").value("request validation failed"))
+                .andExpect(jsonPath("$.retryable").value(false));
     }
 
     @Test
@@ -246,7 +296,13 @@ class Task6bSecurityBoundaryTest {
                         .content("{}"))
                 .andExpect(status().isAccepted())
                 .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+        assertNoOwnershipFields(body);
         return objectMapper.readTree(body).get("job_id").asText();
+    }
+
+    private static void assertNoOwnershipFields(String body) {
+        assertThat(body)
+                .doesNotContain("\"tenant_id\"", "\"owner_user_id\"", "\"tenantId\"", "\"ownerUserId\"");
     }
 
     private void assertNotFound(String jobId, String userId, String tenantId) throws Exception {

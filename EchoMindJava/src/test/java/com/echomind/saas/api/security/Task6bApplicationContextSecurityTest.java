@@ -230,6 +230,15 @@ class Task6bApplicationContextSecurityTest {
                 .andExpect(status().isOk());
     }
 
+    @Test
+    void swaggerUiRedirectAndTargetRemainPublicInTheFullApplicationContext() throws Exception {
+        mvc.perform(get("/swagger-ui.html"))
+                .andExpect(status().is3xxRedirection());
+
+        mvc.perform(get("/swagger-ui/index.html"))
+                .andExpect(status().isOk());
+    }
+
     private static String token(String subject, String tenantId) throws Exception {
         byte[] secret = Base64.getDecoder().decode(TEST_SECRET);
         Instant now = Instant.now();
