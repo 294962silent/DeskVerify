@@ -3,8 +3,11 @@ package com.echomind.saas.platform.outbox;
 import com.echomind.saas.identity.domain.TenantId;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -40,9 +43,9 @@ public final class JdbcOutboxRepository implements OutboxRepository {
     }
 
     @Override
-    public List<OutboxMessage> claimPending(
+    public List<OutboxClaim> claimPending(
             int limit, String leaseOwner, Instant leaseUntil) {
-        List<OutboxMessage> claimed = transactions.execute(status -> {
+        List<OutboxClaim> claimed = transactions.execute(status -> {
             List<String> ids = jdbc.query("""
                     select id
                     from outbox_event
@@ -57,71 +60,91 @@ public final class JdbcOutboxRepository implements OutboxRepository {
             }
 
             Timestamp leaseTimestamp = Timestamp.from(leaseUntil);
+            Map<String, String> claimTokens = new LinkedHashMap<>();
             for (String id : ids) {
-                jdbc.update("""
+                String claimToken = UUID.randomUUID().toString();
+                int updated = jdbc.update("""
                         update outbox_event
                         set state = 'IN_FLIGHT',
                             lease_owner = ?,
+                            claim_token = ?,
                             lease_until = ?,
                             attempts = attempts + 1
                         where id = ?
-                        """, leaseOwner, leaseTimestamp, id);
+                        """, leaseOwner, claimToken, leaseTimestamp, id);
+                if (updated != 1) {
+                    throw new OutboxStateException("outbox claim was not acquired");
+                }
+                claimTokens.put(id, claimToken);
             }
 
             String placeholders = String.join(", ",
                     java.util.Collections.nCopies(ids.size(), "?"));
             return jdbc.query("""
                     select id, tenant_id, aggregate_type, aggregate_id,
-                           event_type, payload_json, available_at
+                           event_type, payload_json, available_at, claim_token
                     from outbox_event
                     where id in (%s)
                     order by created_at, id
-                    """.formatted(placeholders), (result, row) -> new OutboxMessage(
-                    result.getString("id"),
-                    new TenantId(result.getString("tenant_id")),
-                    result.getString("aggregate_type"),
-                    result.getString("aggregate_id"),
-                    result.getString("event_type"),
-                    result.getString("payload_json"),
-                    result.getTimestamp("available_at").toInstant()
-            ), ids.toArray());
+                    """.formatted(placeholders), (result, row) -> {
+                        String id = result.getString("id");
+                        OutboxMessage message = new OutboxMessage(
+                                id,
+                                new TenantId(result.getString("tenant_id")),
+                                result.getString("aggregate_type"),
+                                result.getString("aggregate_id"),
+                                result.getString("event_type"),
+                                result.getString("payload_json"),
+                                result.getTimestamp("available_at").toInstant());
+                        return new OutboxClaim(message, claimTokens.get(id));
+                    }, ids.toArray());
         });
         return Objects.requireNonNull(claimed, "transaction result");
     }
 
     @Override
-    public void markPublished(String messageId, String leaseOwner) {
+    public void markPublished(String messageId, String leaseOwner, String claimToken) {
         int updated = jdbc.update("""
                 update outbox_event
                 set state = 'PUBLISHED',
                     published_at = current_timestamp(6),
                     lease_owner = null,
+                    claim_token = null,
                     lease_until = null
                 where id = ?
                   and state = 'IN_FLIGHT'
                   and lease_owner = ?
-                """, messageId, leaseOwner);
+                  and claim_token = ?
+                  and lease_until > current_timestamp(6)
+                """, messageId, leaseOwner, claimToken);
         if (updated != 1) {
-            throw new OutboxStateException("outbox lease owner is no longer current");
+            throw new OutboxStateException("outbox claim is no longer current");
         }
     }
 
     @Override
     public void releaseForRetry(
-            String messageId, String leaseOwner, Instant availableAt, String error) {
+            String messageId,
+            String leaseOwner,
+            String claimToken,
+            Instant availableAt,
+            String error) {
         int updated = jdbc.update("""
                 update outbox_event
                 set state = 'PENDING',
                     available_at = ?,
                     lease_owner = null,
+                    claim_token = null,
                     lease_until = null,
                     last_error = ?
                 where id = ?
                   and state = 'IN_FLIGHT'
                   and lease_owner = ?
-                """, Timestamp.from(availableAt), error, messageId, leaseOwner);
+                  and claim_token = ?
+                  and lease_until > current_timestamp(6)
+                """, Timestamp.from(availableAt), error, messageId, leaseOwner, claimToken);
         if (updated != 1) {
-            throw new OutboxStateException("outbox lease owner is no longer current");
+            throw new OutboxStateException("outbox claim is no longer current");
         }
     }
 }
