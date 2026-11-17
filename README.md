@@ -3,15 +3,19 @@
 EchoMind 是一个面向企业 SaaS 产品支持场景演进的智能客服平台。项目采用 Java/Spring Boot 后端与 Vue 3 前端，保留多智能体路由、知识库检索、会话记忆、回答校验和评测能力，支持后续扩展产品咨询、技术支持、账户与订阅管理等企业服务场景。
 
 > 当前仓库包含 Java 后端和 Vue 前端；Python 版本不在本仓库中。前端仍保留对 Python/Java 两种后端响应格式的兼容适配。
+>
+> **当前阶段：** SaaS 客服 Foundation 已完成。JWT 认证、租户隔离、MySQL/Flyway、幂等、Transactional Outbox、评测与 Trace 隔离已经接入；业务客服、工单、真实 RAG 与异步 DAG 仍按后续计划实施。
 
 ## 项目特点
 
 - **多 Agent 协作**：根据用户意图在通用、技术支持、账单/账户等 Agent 之间路由，并支持人工升级。
 - **RAG 知识库问答**：支持查询改写、并行召回、混合检索、重排、超时、熔断和降级。
-- **多轮会话记忆**：使用 Redis 保存工作记忆，使用本地 JSON 文件保存长期记忆和知识库数据。
+- **多轮会话记忆**：使用 Redis 保存工作记忆；遗留 JSON 存储仍待迁移，新租户数据已使用 MySQL/Flyway。
 - **回答质量校验**：对回答进行可信度、知识库依据和人工转接判断。
 - **可重复评测**：保留意图识别、Macro-F1、LLM Judge、baseline 对比和异步评测任务。
 - **可观测性**：提供 Actuator、Micrometer、Prometheus 指标、调用链路记录和监控摘要。
+- **身份与隔离**：JWT Resource Server、租户成员校验、角色授权、Trace/评测所有权隔离。
+- **可靠平台基座**：MySQL 幂等记录、租户级 Inbox、事务 Outbox、claim/lease fencing。
 - **前后端分离**：Vue 前端支持聊天调试、健康检查、知识库管理、监控和评测页面。
 - **可部署**：提供 Docker Compose、Redis、ChromaDB、Prometheus 和 Nginx 配置。
 
@@ -19,9 +23,9 @@ EchoMind 是一个面向企业 SaaS 产品支持场景演进的智能客服平�
 
 | 模块 | 技术 |
 | --- | --- |
-| 后端 | Java 21、Spring Boot、Spring AI、LangChain4j |
+| 后端 | Java 21、Spring Boot、Spring Security、Spring AI、LangChain4j |
 | 模型 | Anthropic、DeepSeek |
-| 检索与记忆 | Hybrid RAG、Redis、本地 JSON 存储 |
+| 持久化与检索 | MySQL、Flyway、Redis、Hybrid RAG |
 | 评测与监控 | Macro-F1、LLM Judge、Spring Boot Actuator、Micrometer、Prometheus |
 | 前端 | Vue 3、Vite、JavaScript |
 | 部署 | Docker、Docker Compose、Nginx |
@@ -45,6 +49,10 @@ EchoMind 企业 SaaS 智能支持平台/
 ```
 
 ## 快速开始
+
+当前机器的 Docker、JDK 21 测试环境和完整验证命令见：
+
+- [本地开发与验证](./docs/LOCAL_DEVELOPMENT.md)
 
 ### 1. 启动 Java 后端
 
@@ -148,8 +156,9 @@ curl.exe -X POST http://localhost:8080/eval/run `
 
 - 不要把真实 API Key、Redis 密码或本地 `.env` 文件提交到 Git。
 - 使用 `EchoMindJava/.env.example` 复制生成本地 `.env`。
-- 生产环境需要补充登录认证、租户隔离、权限控制、敏感信息脱敏和外部工具调用审计。
-- 当前项目定位为可运行的技术项目原型，接入真实企业系统前需要进一步完善上述安全边界。
+- Foundation 已提供 JWT 认证、租户隔离、角色授权和稳定错误契约；后续业务模块必须继续使用 `ActorScope`，不得从请求体读取授权身份。
+- 正式环境需要配置可信 JWT 签发方、数据库账号、Redis、知识库向量服务和外部工具审计。
+- 当前项目定位为可运行的技术项目原型，后续真实订单、订阅、工单与 RAG 接入仍需按设计验收。
 
 ## 相关文档
 
