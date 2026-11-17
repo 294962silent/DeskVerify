@@ -4,6 +4,8 @@ import com.echomind.intent.IntentCategory;
 import com.echomind.intent.IntentRecognizer;
 import com.echomind.intent.IntentResult;
 import com.echomind.intent.UrgencyLevel;
+import com.echomind.saas.architecture.LegacySaaSBridge;
+import com.echomind.saas.identity.domain.ActorScope;
 import com.echomind.trace.RequestTraceStore;
 import com.echomind.trace.RequestToolTrace;
 import com.echomind.trace.ToolCallTrace;
@@ -23,6 +25,7 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 @Service
+@LegacySaaSBridge("legacy orchestrator accepts the authenticated actor only for owned trace recording")
 public class AgentOrchestrator {
 
     private final IntentRecognizer intentRecognizer;
@@ -48,10 +51,17 @@ public class AgentOrchestrator {
     }
 
     public OrchestratorResult run(AgentRequest request) {
-        return run(request, List.of());
+        return run(request, List.of(), null);
     }
 
     public OrchestratorResult run(AgentRequest request, List<ToolCallTrace> externalToolCalls) {
+        return run(request, externalToolCalls, null);
+    }
+
+    public OrchestratorResult run(
+            AgentRequest request,
+            List<ToolCallTrace> externalToolCalls,
+            ActorScope actorScope) {
         Instant start = Instant.now();
         AgentRequest req = request;
         if (req.intent() == null) {
@@ -75,13 +85,13 @@ public class AgentOrchestrator {
                     "低置信度 OTHER 意图，先澄清用户需求",
                     req.intentConfidence()
             );
-            recordTrace(req, result);
+            recordTrace(req, result, actorScope);
             return result;
         }
 
         RoutingDecision decision = routeDecision(req);
         if (decision.multiAgent()) {
-            return runParallel(req, decision, externalToolCalls);
+            return runParallel(req, decision, externalToolCalls, actorScope);
         }
 
         AgentResponse response = execute(req, decision.primaryAgent());
@@ -104,19 +114,23 @@ public class AgentOrchestrator {
                 decision.reason(),
                 decision.confidence()
         );
-        recordTrace(req, result);
+        recordTrace(req, result, actorScope);
         return result;
     }
 
-    public Optional<RequestToolTrace> getToolTrace(String requestId) {
-        return traceStore.find(requestId);
+    public Optional<RequestToolTrace> getToolTrace(String requestId, ActorScope actorScope) {
+        return traceStore.find(requestId, actorScope);
     }
 
-    public List<RequestToolTrace> getRecentToolTraces(int limit) {
-        return traceStore.recent(limit);
+    public List<RequestToolTrace> getRecentToolTraces(int limit, ActorScope actorScope) {
+        return traceStore.recent(limit, actorScope);
     }
 
-    private OrchestratorResult runParallel(AgentRequest req, RoutingDecision decision, List<ToolCallTrace> externalToolCalls) {
+    private OrchestratorResult runParallel(
+            AgentRequest req,
+            RoutingDecision decision,
+            List<ToolCallTrace> externalToolCalls,
+            ActorScope actorScope) {
         Instant start = Instant.now();
         List<AgentType> targets = decision.agentTypes();
         List<CompletableFuture<AgentResponse>> futures = targets.stream()
@@ -151,7 +165,7 @@ public class AgentOrchestrator {
                 decision.reason(),
                 decision.confidence()
         );
-        recordTrace(req, result);
+        recordTrace(req, result, actorScope);
         return result;
     }
 
@@ -350,7 +364,10 @@ public class AgentOrchestrator {
         return response;
     }
 
-    private void recordTrace(AgentRequest req, OrchestratorResult result) {
+    private void recordTrace(AgentRequest req, OrchestratorResult result, ActorScope actorScope) {
+        if (actorScope == null) {
+            return;
+        }
         traceStore.record(new RequestToolTrace(
                 result.requestId(),
                 Instant.now().toString(),
@@ -367,7 +384,7 @@ public class AgentOrchestrator {
                 result.toolsUsed().contains("search_knowledge_base") || result.toolsUsed().contains("knowledge_search"),
                 result.escalated(),
                 result.latencyMs()
-        ));
+        ), actorScope);
     }
 
     private List<ToolCallTrace> collectToolCalls(List<ToolCallTrace> externalToolCalls, AgentResponse... responses) {

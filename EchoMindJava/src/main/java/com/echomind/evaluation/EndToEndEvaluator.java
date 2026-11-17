@@ -8,6 +8,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.echomind.intent.IntentRecognizer;
 import com.echomind.intent.IntentResult;
+import com.echomind.saas.architecture.LegacySaaSBridge;
 import com.echomind.saas.identity.domain.TenantScopedActorKey;
 import org.springframework.stereotype.Service;
 
@@ -23,6 +24,7 @@ import java.util.Set;
 import java.util.UUID;
 
 @Service
+@LegacySaaSBridge("legacy evaluator consumes the tenant-qualified SaaS execution key")
 public class EndToEndEvaluator {
 
     private final IntentRecognizer intentRecognizer;

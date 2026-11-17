@@ -26,6 +26,8 @@ import com.echomind.saas.identity.domain.ActorScope;
 import com.echomind.saas.identity.security.SaasSecurityConfiguration;
 import com.echomind.skill.SkillManager;
 import com.echomind.tool.KnowledgeToolManager;
+import com.echomind.trace.RequestToolTrace;
+import com.echomind.trace.RequestTraceStore;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nimbusds.jose.JWSAlgorithm;
@@ -57,6 +59,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.not;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -91,6 +94,8 @@ class Task6bSecurityBoundaryTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    private final RequestTraceStore traceStore = new RequestTraceStore();
 
     @MockitoBean
     private AgentOrchestrator orchestrator;
@@ -137,7 +142,7 @@ class Task6bSecurityBoundaryTest {
                         1,
                         Map.of()
                 ));
-        when(orchestrator.run(any(AgentRequest.class), anyList()))
+        when(orchestrator.run(any(AgentRequest.class), anyList(), any(ActorScope.class)))
                 .thenReturn(new OrchestratorResult(
                         "request-result",
                         "response",
@@ -156,6 +161,13 @@ class Task6bSecurityBoundaryTest {
         when(answerVerifier.verify(anyString(), anyString(), anyString()))
                 .thenReturn(new AnswerVerifier.VerificationResult(true, false, false, "test"));
         when(evaluator.run(any(), any())).thenReturn(Map.of("ok", true));
+        traceStore.clear();
+        when(orchestrator.getToolTrace(anyString(), any(ActorScope.class)))
+                .thenAnswer(invocation -> traceStore.find(
+                        invocation.getArgument(0), invocation.getArgument(1)));
+        when(orchestrator.getRecentToolTraces(anyInt(), any(ActorScope.class)))
+                .thenAnswer(invocation -> traceStore.recent(
+                        invocation.getArgument(0), invocation.getArgument(1)));
     }
 
     @Test
@@ -255,6 +267,24 @@ class Task6bSecurityBoundaryTest {
     }
 
     @Test
+    void jwtWithWrongIssuerIsRejectedWithTheStableAuthenticationEnvelope() throws Exception {
+        assertUnauthorizedToken(token(
+                "customer-a", "tenant-a", "other-issuer", List.of("echomind-api")));
+    }
+
+    @Test
+    void jwtWithWrongAudienceIsRejectedWithTheStableAuthenticationEnvelope() throws Exception {
+        assertUnauthorizedToken(token(
+                "customer-a", "tenant-a", "echomind-local", List.of("other-audience")));
+    }
+
+    @Test
+    void jwtWithoutAudienceIsRejectedWithTheStableAuthenticationEnvelope() throws Exception {
+        assertUnauthorizedToken(token(
+                "customer-a", "tenant-a", "echomind-local", null));
+    }
+
+    @Test
     void customerChatRemainsAuthenticatedWithoutAdminRole() throws Exception {
         mvc.perform(post("/chat")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -289,6 +319,52 @@ class Task6bSecurityBoundaryTest {
         verify(memoryManager).getContext(eq("tenant:tenant-b/user:user-1"), eq("shared-conv"), eq("hello"));
     }
 
+    @Test
+    void traceLookupAndRecentRoutesEnforceTenantAndActorOwnership() throws Exception {
+        traceStore.record(trace("request-a"), actor("tenant-a", "customer-a", ActorRole.CUSTOMER));
+        traceStore.record(trace("request-b"), actor("tenant-a", "customer-b", ActorRole.CUSTOMER));
+        traceStore.record(trace("request-c"), actor("tenant-b", "customer-c", ActorRole.CUSTOMER));
+
+        String ownBody = mvc.perform(get("/trace/request-a")
+                        .header("Authorization", "Bearer " + token("customer-a", "tenant-a")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.found").value(true))
+                .andExpect(jsonPath("$.trace.request_id").value("request-a"))
+                .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+        assertNoTraceOwnershipFields(ownBody);
+
+        assertTraceNotFound("request-b", "customer-a", "tenant-a");
+        assertTraceNotFound("request-a", "customer-c", "tenant-b");
+        assertTraceNotFound("unknown-trace", "customer-a", "tenant-a");
+
+        mvc.perform(get("/trace/request-b")
+                        .header("Authorization", "Bearer " + token("admin-a", "tenant-a")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.trace.request_id").value("request-b"));
+        assertTraceNotFound("request-c", "admin-a", "tenant-a");
+    }
+
+    @Test
+    void recentTraceRoutesUseTheSameOwnershipFilters() throws Exception {
+        traceStore.record(trace("request-a"), actor("tenant-a", "customer-a", ActorRole.CUSTOMER));
+        traceStore.record(trace("request-b"), actor("tenant-a", "customer-b", ActorRole.CUSTOMER));
+        traceStore.record(trace("request-c"), actor("tenant-b", "customer-c", ActorRole.CUSTOMER));
+
+        String ownBody = mvc.perform(get("/trace/recent")
+                        .header("Authorization", "Bearer " + token("customer-a", "tenant-a")))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+        assertNoTraceOwnershipFields(ownBody);
+        assertThat(traceIds(ownBody)).containsExactly("request-a");
+
+        String adminBody = mvc.perform(get("/trace/tools")
+                        .header("Authorization", "Bearer " + token("admin-a", "tenant-a")))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+        assertNoTraceOwnershipFields(adminBody);
+        assertThat(traceIds(adminBody)).containsExactly("request-b", "request-a");
+    }
+
     private String submitEvaluation(String userId, String tenantId) throws Exception {
         String body = mvc.perform(post("/eval/jobs")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -303,6 +379,63 @@ class Task6bSecurityBoundaryTest {
     private static void assertNoOwnershipFields(String body) {
         assertThat(body)
                 .doesNotContain("\"tenant_id\"", "\"owner_user_id\"", "\"tenantId\"", "\"ownerUserId\"");
+    }
+
+    private void assertUnauthorizedToken(String token) throws Exception {
+        mvc.perform(get("/trace/recent")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.code").value("AUTHENTICATION_REQUIRED"))
+                .andExpect(jsonPath("$.message").value("authentication required"))
+                .andExpect(jsonPath("$.retryable").value(false));
+    }
+
+    private static void assertNoTraceOwnershipFields(String body) {
+        assertThat(body).doesNotContain(
+                "\"tenant_id\"", "\"actor_user_id\"", "\"tenantId\"", "\"actorUserId\"");
+    }
+
+    private void assertTraceNotFound(String requestId, String userId, String tenantId) throws Exception {
+        mvc.perform(get("/trace/{requestId}", requestId)
+                        .header("Authorization", "Bearer " + token(userId, tenantId)))
+                .andExpect(status().isNotFound())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"))
+                .andExpect(jsonPath("$.message").value("resource not found"))
+                .andExpect(jsonPath("$.retryable").value(false));
+    }
+
+    private List<String> traceIds(String body) throws Exception {
+        return objectMapper.readTree(body).get("items").findValuesAsText("request_id");
+    }
+
+    private static RequestToolTrace trace(String requestId) {
+        return new RequestToolTrace(
+                requestId,
+                "2026-11-18T00:00:00Z",
+                "chat",
+                "tenant-qualified-user",
+                "conversation-1",
+                "greeting",
+                "smalltalk",
+                "general",
+                "general",
+                List.of(),
+                List.of(),
+                List.of(),
+                false,
+                false,
+                1);
+    }
+
+    private static ActorScope actor(String tenantId, String userId, ActorRole role) {
+        return new ActorScope(
+                new com.echomind.saas.identity.domain.UserId(userId),
+                new com.echomind.saas.identity.domain.TenantId(tenantId),
+                Set.of(role),
+                Set.of(),
+                "trace-test");
     }
 
     private void assertNotFound(String jobId, String userId, String tenantId) throws Exception {
@@ -321,17 +454,29 @@ class Task6bSecurityBoundaryTest {
     }
 
     private static String token(String subject, String tenantId) throws Exception {
+        return token(subject, tenantId, "echomind-local", List.of("echomind-api"));
+    }
+
+    private static String token(
+            String subject,
+            String tenantId,
+            String issuer,
+            List<String> audience) throws Exception {
         byte[] secret = Base64.getDecoder().decode(TEST_SECRET);
         Instant now = Instant.now();
+        JWTClaimsSet.Builder claims = new JWTClaimsSet.Builder()
+                .subject(subject)
+                .claim("tenant_id", tenantId)
+                .jwtID("task-6b-" + subject + "-" + tenantId)
+                .issuer(issuer)
+                .issueTime(Date.from(now.minusSeconds(5)))
+                .expirationTime(Date.from(now.plusSeconds(300)));
+        if (audience != null) {
+            claims.audience(audience);
+        }
         SignedJWT jwt = new SignedJWT(
                 new JWSHeader(JWSAlgorithm.HS256),
-                new JWTClaimsSet.Builder()
-                        .subject(subject)
-                        .claim("tenant_id", tenantId)
-                        .jwtID("task-6b-" + subject + "-" + tenantId)
-                        .issueTime(Date.from(now.minusSeconds(5)))
-                        .expirationTime(Date.from(now.plusSeconds(300)))
-                        .build()
+                claims.build()
         );
         jwt.sign(new MACSigner(secret));
         return jwt.serialize();

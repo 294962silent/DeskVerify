@@ -11,6 +11,7 @@ import java.util.UUID;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 @Repository
@@ -27,6 +28,11 @@ public class JdbcOutboxRepository implements OutboxRepository {
 
     @Override
     public void append(OutboxMessage message) {
+        if (!TransactionSynchronizationManager.isActualTransactionActive()
+                || !TransactionSynchronizationManager.isSynchronizationActive()) {
+            throw new OutboxTransactionRequiredException(
+                    "outbox append requires an active transaction");
+        }
         jdbc.update("""
                 insert into outbox_event(
                     id, tenant_id, aggregate_type, aggregate_id,

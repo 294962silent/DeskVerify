@@ -2,6 +2,7 @@ package com.echomind.evaluation;
 
 import com.echomind.api.dto.EvalRunRequest;
 import com.echomind.config.EchoMindProperties;
+import com.echomind.saas.architecture.LegacySaaSBridge;
 import com.echomind.saas.api.error.ResourceNotFoundException;
 import com.echomind.saas.evaluation.domain.EvaluationJob;
 import com.echomind.saas.identity.domain.ActorScope;
@@ -35,6 +36,7 @@ import java.util.stream.Collectors;
  * 任务及完成报告持久化到本地文件，服务重启后可继续读取已完成报告。
  */
 @Service
+@LegacySaaSBridge("legacy async evaluator adapts SaaS actor-owned evaluation jobs")
 public class EvaluationJobService {
 
     private static final Logger log = LoggerFactory.getLogger(EvaluationJobService.class);

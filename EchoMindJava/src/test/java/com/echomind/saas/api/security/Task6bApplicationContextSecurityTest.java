@@ -16,6 +16,7 @@ import com.echomind.llm.LlmGateway;
 import com.echomind.memory.MemoryContext;
 import com.echomind.memory.MemoryManager;
 import com.echomind.monitor.PerformanceMonitor;
+import com.echomind.saas.identity.domain.ActorScope;
 import com.echomind.saas.testsupport.MySqlTestContainers;
 import com.echomind.skill.SkillManager;
 import com.echomind.tool.KnowledgeToolManager;
@@ -57,6 +58,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -167,7 +169,7 @@ class Task6bApplicationContextSecurityTest {
                 1,
                 Map.of()
         ));
-        when(orchestrator.run(any(AgentRequest.class), anyList())).thenReturn(new OrchestratorResult(
+        when(orchestrator.run(any(AgentRequest.class), anyList(), any(ActorScope.class))).thenReturn(new OrchestratorResult(
                 "request-result",
                 "response",
                 AgentType.GENERAL,
@@ -195,7 +197,7 @@ class Task6bApplicationContextSecurityTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.response").value("response"));
 
-        verify(orchestrator).run(any(AgentRequest.class), anyList());
+        verify(orchestrator).run(any(AgentRequest.class), anyList(), any(ActorScope.class));
     }
 
     @ParameterizedTest(name = "{0}")
@@ -233,7 +235,8 @@ class Task6bApplicationContextSecurityTest {
     @Test
     void swaggerUiRedirectAndTargetRemainPublicInTheFullApplicationContext() throws Exception {
         mvc.perform(get("/swagger-ui.html"))
-                .andExpect(status().is3xxRedirection());
+                .andExpect(status().is3xxRedirection())
+                .andExpect(header().string("Location", "/swagger-ui/index.html"));
 
         mvc.perform(get("/swagger-ui/index.html"))
                 .andExpect(status().isOk());
@@ -248,6 +251,8 @@ class Task6bApplicationContextSecurityTest {
                         .subject(subject)
                         .claim("tenant_id", tenantId)
                         .jwtID("context-" + subject + "-" + tenantId)
+                        .issuer("echomind-local")
+                        .audience(List.of("echomind-api"))
                         .issueTime(Date.from(now.minusSeconds(5)))
                         .expirationTime(Date.from(now.plusSeconds(300)))
                         .build()

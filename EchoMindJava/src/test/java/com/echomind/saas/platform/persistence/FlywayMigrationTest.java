@@ -1,6 +1,7 @@
 package com.echomind.saas.platform.persistence;
 
 import com.echomind.saas.testsupport.MySqlTestContainers;
+import java.sql.Connection;
 import java.sql.DriverManager;
 import java.util.List;
 import org.flywaydb.core.Flyway;
@@ -10,6 +11,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @Testcontainers(disabledWithoutDocker = true)
 class FlywayMigrationTest {
@@ -38,6 +40,47 @@ class FlywayMigrationTest {
                     }
                 }
             }
+        }
+    }
+
+    @Test
+    void inboxDeduplicationIsScopedByTenant() throws Exception {
+        Flyway.configure()
+                .dataSource(MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword())
+                .load()
+                .migrate();
+
+        try (Connection connection = DriverManager.getConnection(
+                MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword())) {
+            try (var statement = connection.createStatement()) {
+                statement.executeUpdate("delete from inbox_event");
+            }
+            insertInboxEvent(connection, "consumer-1", "event-1", "tenant-a");
+            insertInboxEvent(connection, "consumer-1", "event-1", "tenant-b");
+
+            assertThatThrownBy(() ->
+                    insertInboxEvent(connection, "consumer-1", "event-1", "tenant-a"))
+                    .hasMessageContaining("Duplicate entry");
+
+            try (var statement = connection.createStatement();
+                 var rows = statement.executeQuery("select count(*) from inbox_event")) {
+                rows.next();
+                assertThat(rows.getInt(1)).isEqualTo(2);
+            }
+        }
+    }
+
+    private static void insertInboxEvent(
+            Connection connection, String consumer, String eventId, String tenantId)
+            throws Exception {
+        try (var statement = connection.prepareStatement("""
+                insert into inbox_event(consumer_name, event_id, tenant_id)
+                values (?, ?, ?)
+                """)) {
+            statement.setString(1, consumer);
+            statement.setString(2, eventId);
+            statement.setString(3, tenantId);
+            statement.executeUpdate();
         }
     }
 }

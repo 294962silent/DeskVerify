@@ -78,7 +78,7 @@ class EvaluationJobServiceTest {
     @Test
     void retentionIsIndependentPerTenantAndOwner() {
         ActorScope firstOwner = actor("tenant-a", "user-1");
-        ActorScope secondOwner = actor("tenant-b", "user-2");
+        ActorScope secondOwner = actor("tenant-b", "user-1");
         List<String> firstOwnerJobIds = new ArrayList<>();
         for (int i = 0; i < 21; i++) {
             firstOwnerJobIds.add(service.submit(REQUEST, firstOwner).jobId());

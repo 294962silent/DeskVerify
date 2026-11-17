@@ -2,6 +2,8 @@ package com.echomind.saas.platform.idempotency;
 
 import com.echomind.saas.identity.domain.TenantId;
 import com.echomind.saas.testsupport.MySqlTestContainers;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.sql.Timestamp;
 import java.time.Instant;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeEach;
@@ -17,6 +19,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @Testcontainers(disabledWithoutDocker = true)
 class JdbcIdempotencyRepositoryTest {
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     @Container
     static final MySQLContainer<?> MYSQL = MySqlTestContainers.create();
@@ -137,5 +141,57 @@ class JdbcIdempotencyRepositoryTest {
                 select state from idempotency_record
                 where tenant_id = 'tenant-b' and idempotency_key = 'key-1'
                 """, String.class)).isEqualTo("IN_PROGRESS");
+    }
+
+    @Test
+    void completedReplayReturnsResponseAndCompletionTime() throws Exception {
+        TenantId tenantId = new TenantId("tenant-a");
+        String attemptToken = repository.tryAcquire(
+                        tenantId, "key-1", "hash-a", Instant.now().plusSeconds(3600))
+                .orElseThrow();
+
+        repository.complete(tenantId, "key-1", attemptToken, "{\"status\":\"ok\"}");
+
+        IdempotencyReplay replay = repository.findCompleted(tenantId, "key-1").orElseThrow();
+        assertThat(OBJECT_MAPPER.readTree(replay.responseJson()))
+                .isEqualTo(OBJECT_MAPPER.readTree("{\"status\":\"ok\"}"));
+        assertThat(replay.completedAt()).isNotNull();
+    }
+
+    @Test
+    void activeInProgressRecordHasNoCompletedReplay() {
+        TenantId tenantId = new TenantId("tenant-a");
+        repository.tryAcquire(
+                tenantId, "key-1", "hash-a", Instant.now().plusSeconds(3600));
+
+        assertThat(repository.findCompleted(tenantId, "key-1")).isEmpty();
+    }
+
+    @Test
+    void expiredCompletedRecordHasNoReplay() {
+        TenantId tenantId = new TenantId("tenant-a");
+        String attemptToken = repository.tryAcquire(
+                        tenantId, "key-1", "hash-a", Instant.now().plusSeconds(3600))
+                .orElseThrow();
+        repository.complete(tenantId, "key-1", attemptToken, "{\"status\":\"ok\"}");
+        jdbc.update("""
+                update idempotency_record
+                set expires_at = ?
+                where tenant_id = 'tenant-a' and idempotency_key = 'key-1'
+                """, Timestamp.from(Instant.now().minusSeconds(1)));
+
+        assertThat(repository.findCompleted(tenantId, "key-1")).isEmpty();
+    }
+
+    @Test
+    void completedReplayIsTenantIsolated() {
+        TenantId tenantA = new TenantId("tenant-a");
+        TenantId tenantB = new TenantId("tenant-b");
+        String attemptToken = repository.tryAcquire(
+                        tenantA, "key-1", "hash-a", Instant.now().plusSeconds(3600))
+                .orElseThrow();
+        repository.complete(tenantA, "key-1", attemptToken, "{\"status\":\"ok\"}");
+
+        assertThat(repository.findCompleted(tenantB, "key-1")).isEmpty();
     }
 }

@@ -20,6 +20,8 @@ import com.echomind.memory.MemoryContext;
 import com.echomind.memory.MemoryManager;
 import com.echomind.memory.MessageRole;
 import com.echomind.monitor.PerformanceMonitor;
+import com.echomind.saas.api.error.ResourceNotFoundException;
+import com.echomind.saas.architecture.LegacySaaSBridge;
 import com.echomind.saas.identity.domain.ActorScope;
 import com.echomind.saas.identity.domain.TenantScopedActorKey;
 import com.echomind.skill.SkillManager;
@@ -53,6 +55,7 @@ import java.util.UUID;
 
 @RestController
 @Tag(name = "EchoMind API", description = "智能客服对话、知识库、监控和评测接口")
+@LegacySaaSBridge("legacy HTTP controller binds authenticated SaaS actor scope into existing services")
 public class EchoMindController {
 
     private final AgentOrchestrator orchestrator;
@@ -140,7 +143,8 @@ public class EchoMindController {
         String fullContext = join(memoryText, knowledgeText);
         OrchestratorResult result = orchestrator.run(
                 AgentRequest.of(request.message(), actorKey, conversationId, fullContext, history, intentResult, requestId),
-                knowledgeTrace == null ? List.of() : List.of(knowledgeTrace)
+                knowledgeTrace == null ? List.of() : List.of(knowledgeTrace),
+                actorScope
         );
         AnswerVerifier.VerificationResult verification = answerVerifier.verify(request.message(), result.response(), fullContext);
         boolean escalated = result.escalated() || verification.needEscalation();
@@ -222,18 +226,22 @@ public class EchoMindController {
         return performanceMonitor.summary();
     }
 
-    @GetMapping("/trace/tool/{requestId}")
+    @GetMapping({"/trace/{requestId}", "/trace/tool/{requestId}"})
     @Operation(summary = "查看单次请求的工具轨迹", description = "返回指定 requestId 对应的工具调用详情。")
-    public Map<String, Object> toolTrace(@Parameter(description = "请求 ID") @org.springframework.web.bind.annotation.PathVariable String requestId) {
-        return orchestrator.getToolTrace(requestId)
+    public Map<String, Object> toolTrace(
+            @Parameter(description = "请求 ID") @org.springframework.web.bind.annotation.PathVariable String requestId,
+            @AuthenticationPrincipal ActorScope actorScope) {
+        return orchestrator.getToolTrace(requestId, actorScope)
                 .<Map<String, Object>>map(trace -> Map.of("found", true, "trace", trace))
-                .orElseGet(() -> Map.of("found", false, "trace", Map.of()));
+                .orElseThrow(ResourceNotFoundException::new);
     }
 
-    @GetMapping("/trace/tools")
+    @GetMapping({"/trace/recent", "/trace/tools"})
     @Operation(summary = "查看最近工具轨迹", description = "返回最近 N 次请求的工具调用详情。")
-    public Map<String, Object> recentToolTraces(@RequestParam(defaultValue = "20") int limit) {
-        return Map.of("items", orchestrator.getRecentToolTraces(limit));
+    public Map<String, Object> recentToolTraces(
+            @RequestParam(defaultValue = "20") int limit,
+            @AuthenticationPrincipal ActorScope actorScope) {
+        return Map.of("items", orchestrator.getRecentToolTraces(limit, actorScope));
     }
 
     @GetMapping("/skills")

@@ -12,6 +12,7 @@ public class EchoMindProperties {
     private final Monitor monitor = new Monitor();
     private final Eval eval = new Eval();
     private final Skills skills = new Skills();
+    private final Security security = new Security();
 
     public Llm getLlm() {
         return llm;
@@ -39,6 +40,10 @@ public class EchoMindProperties {
 
     public Skills getSkills() {
         return skills;
+    }
+
+    public Security getSecurity() {
+        return security;
     }
 
     public static class Llm {
@@ -212,6 +217,35 @@ public class EchoMindProperties {
 
         public void setMaxPromptChars(int maxPromptChars) {
             this.maxPromptChars = maxPromptChars;
+        }
+    }
+
+    public static class Security {
+        private final Jwt jwt = new Jwt();
+
+        public Jwt getJwt() {
+            return jwt;
+        }
+    }
+
+    public static class Jwt {
+        private String issuer = "echomind-local";
+        private String audience = "echomind-api";
+
+        public String getIssuer() {
+            return issuer;
+        }
+
+        public void setIssuer(String issuer) {
+            this.issuer = issuer;
+        }
+
+        public String getAudience() {
+            return audience;
+        }
+
+        public void setAudience(String audience) {
+            this.audience = audience;
         }
     }
 }

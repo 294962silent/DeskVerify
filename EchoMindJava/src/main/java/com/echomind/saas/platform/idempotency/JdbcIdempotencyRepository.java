@@ -42,6 +42,7 @@ public class JdbcIdempotencyRepository implements IdempotencyRepository {
                     set request_hash = ?,
                         state = 'IN_PROGRESS',
                         response_json = null,
+                        completed_at = null,
                         attempt_token = ?,
                         created_at = current_timestamp(6),
                         expires_at = ?
@@ -80,6 +81,7 @@ public class JdbcIdempotencyRepository implements IdempotencyRepository {
                 update idempotency_record
                 set state = 'COMPLETED',
                     response_json = ?,
+                    completed_at = current_timestamp(6),
                     attempt_token = null
                 where tenant_id = ?
                   and idempotency_key = ?
@@ -91,5 +93,23 @@ public class JdbcIdempotencyRepository implements IdempotencyRepository {
             throw new IdempotencyStateException(
                     "idempotency attempt token is no longer current");
         }
+    }
+
+    @Override
+    public Optional<IdempotencyReplay> findCompleted(TenantId tenantId, String key) {
+        List<IdempotencyReplay> replays = jdbc.query("""
+                select response_json, completed_at
+                from idempotency_record
+                where tenant_id = ?
+                  and idempotency_key = ?
+                  and state = 'COMPLETED'
+                  and response_json is not null
+                  and completed_at is not null
+                  and expires_at > current_timestamp(6)
+                """, (result, row) -> new IdempotencyReplay(
+                        result.getString("response_json"),
+                        result.getTimestamp("completed_at").toInstant()),
+                tenantId.value(), key);
+        return replays.stream().findFirst();
     }
 }

@@ -7,6 +7,7 @@ import com.echomind.agent.AnswerVerifier;
 import com.echomind.agent.OrchestratorResult;
 import com.echomind.api.EchoMindController;
 import com.echomind.api.dto.EvalRunRequest;
+import com.echomind.config.AppConfig;
 import com.echomind.evaluation.EndToEndEvaluator;
 import com.echomind.evaluation.EvaluationJobService;
 import com.echomind.intent.IntentCategory;
@@ -72,6 +73,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @WebMvcTest(EchoMindController.class)
 @Import({
+        AppConfig.class,
         SaasSecurityConfiguration.class,
         ApiAuthenticationEntryPoint.class,
         ApiAccessDeniedHandler.class,
@@ -137,7 +139,7 @@ class AuthenticatedActorBoundaryTest {
                         1,
                         Map.of()
                 ));
-        when(orchestrator.run(any(AgentRequest.class), anyList()))
+        when(orchestrator.run(any(AgentRequest.class), anyList(), any(ActorScope.class)))
                 .thenReturn(new OrchestratorResult(
                         "request-result",
                         "response",
@@ -183,7 +185,7 @@ class AuthenticatedActorBoundaryTest {
 
         verify(memoryManager).getContext(eq(TENANT_A_KEY), eq("conv-1"), eq("hello"));
         ArgumentCaptor<AgentRequest> requestCaptor = ArgumentCaptor.forClass(AgentRequest.class);
-        verify(orchestrator).run(requestCaptor.capture(), anyList());
+        verify(orchestrator).run(requestCaptor.capture(), anyList(), any(ActorScope.class));
         assertThat(requestCaptor.getValue().userId()).isEqualTo(TENANT_A_KEY);
     }
 
@@ -286,6 +288,8 @@ class AuthenticatedActorBoundaryTest {
         Instant now = Instant.now();
         JWTClaimsSet.Builder claims = new JWTClaimsSet.Builder()
                 .jwtID("jwt-request-1")
+                .issuer("echomind-local")
+                .audience(List.of("echomind-api"))
                 .issueTime(Date.from(now.minusSeconds(5)))
                 .expirationTime(Date.from(now.plusSeconds(300)));
         if (subject != null) {

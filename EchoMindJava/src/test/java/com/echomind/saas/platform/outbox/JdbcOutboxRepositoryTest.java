@@ -17,7 +17,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -36,6 +38,7 @@ class JdbcOutboxRepositoryTest {
 
     private JdbcOutboxRepository repository;
     private JdbcTemplate jdbc;
+    private TransactionTemplate transactions;
 
     @BeforeEach
     void setUp() {
@@ -43,10 +46,12 @@ class JdbcOutboxRepositoryTest {
                 .dataSource(MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword())
                 .load()
                 .migrate();
-        jdbc = new JdbcTemplate(
-                new DriverManagerDataSource(
-                        MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword()));
+        DriverManagerDataSource dataSource = new DriverManagerDataSource(
+                MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword());
+        jdbc = new JdbcTemplate(dataSource);
+        transactions = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
         jdbc.update("delete from outbox_event");
+        jdbc.update("delete from tenant where id like 'tx-%'");
         repository = new JdbcOutboxRepository(jdbc);
     }
 
@@ -54,7 +59,7 @@ class JdbcOutboxRepositoryTest {
     void persistsAMessageAndClaimsEveryFieldWithANonblankToken() {
         OutboxMessage message = message("00000000-0000-0000-0000-000000000001", "ticket.created");
 
-        repository.append(message);
+        appendInTransaction(message);
 
         assertClaimsContainExactly(
                 repository.claimPending(10, "lease-owner", Instant.now().plusSeconds(3600)),
@@ -65,7 +70,7 @@ class JdbcOutboxRepositoryTest {
     void doesNotClaimAnActiveLease() {
         OutboxMessage message = message(
                 "00000000-0000-0000-0000-000000000001", "ticket.created");
-        repository.append(message);
+        appendInTransaction(message);
 
         assertClaimsContainExactly(
                 repository.claimPending(10, "owner-a", Instant.now().plusSeconds(3600)),
@@ -79,7 +84,7 @@ class JdbcOutboxRepositoryTest {
     void concurrentClaimsProduceExactlyOneSuccessfulClaim() throws Exception {
         OutboxMessage message = message(
                 "00000000-0000-0000-0000-000000000001", "ticket.created");
-        repository.append(message);
+        appendInTransaction(message);
         CountDownLatch ready = new CountDownLatch(2);
         CountDownLatch start = new CountDownLatch(1);
 
@@ -107,7 +112,7 @@ class JdbcOutboxRepositoryTest {
     void expiredLeaseReclaimsWithADifferentTokenForTheSameOwner() {
         OutboxMessage message = message(
                 "00000000-0000-0000-0000-000000000001", "ticket.created");
-        repository.append(message);
+        appendInTransaction(message);
 
         OutboxClaim oldClaim = repository.claimPending(
                         10, "owner-a", Instant.now().minusSeconds(1))
@@ -127,7 +132,7 @@ class JdbcOutboxRepositoryTest {
     void anOldClaimTokenCannotPublishOrReleaseAfterReclaim() {
         OutboxMessage message = message(
                 "00000000-0000-0000-0000-000000000001", "ticket.created");
-        repository.append(message);
+        appendInTransaction(message);
         OutboxClaim oldClaim = repository.claimPending(
                         10, "owner-a", Instant.now().minusSeconds(1))
                 .getFirst();
@@ -157,8 +162,8 @@ class JdbcOutboxRepositoryTest {
                 "00000000-0000-0000-0000-000000000002", "ticket.second");
         OutboxMessage earlierId = message(
                 "00000000-0000-0000-0000-000000000001", "ticket.first");
-        repository.append(laterId);
-        repository.append(earlierId);
+        appendInTransaction(laterId);
+        appendInTransaction(earlierId);
         Timestamp createdAt = Timestamp.from(Instant.parse("2025-02-01T00:00:00Z"));
         jdbc.update("update outbox_event set created_at = ?", createdAt);
 
@@ -174,8 +179,8 @@ class JdbcOutboxRepositoryTest {
                 "00000000-0000-0000-0000-000000000001", "tenant-b", "ticket.first");
         OutboxMessage tenantA = message(
                 "00000000-0000-0000-0000-000000000002", "tenant-a", "ticket.second");
-        repository.append(tenantA);
-        repository.append(tenantB);
+        appendInTransaction(tenantA);
+        appendInTransaction(tenantB);
         jdbc.update(
                 "update outbox_event set created_at = ?",
                 Timestamp.from(Instant.parse("2025-02-01T00:00:00Z")));
@@ -194,15 +199,17 @@ class JdbcOutboxRepositoryTest {
                 "ticket.created",
                 "{\"ticketId\":\"ticket-1\"");
 
-        assertThatThrownBy(() -> repository.append(malformed))
+        assertThatThrownBy(() -> appendInTransaction(malformed))
                 .isInstanceOf(DataAccessException.class);
+        assertThat(jdbc.queryForObject(
+                "select count(*) from outbox_event", Integer.class)).isZero();
     }
 
     @Test
     void currentTokenPublishesAndClearsTheLease() {
         OutboxMessage message = message(
                 "00000000-0000-0000-0000-000000000001", "ticket.created");
-        repository.append(message);
+        appendInTransaction(message);
         OutboxClaim claim = repository.claimPending(
                         10, "owner-a", Instant.now().plusSeconds(3600))
                 .getFirst();
@@ -233,7 +240,7 @@ class JdbcOutboxRepositoryTest {
     void currentTokenReleasesAndSchedulesARetry() {
         OutboxMessage message = message(
                 "00000000-0000-0000-0000-000000000001", "ticket.created");
-        repository.append(message);
+        appendInTransaction(message);
         OutboxClaim claim = repository.claimPending(
                         10, "owner-a", Instant.now().plusSeconds(3600))
                 .getFirst();
@@ -263,6 +270,63 @@ class JdbcOutboxRepositoryTest {
         assertThat(jdbc.queryForObject("""
                 select available_at from outbox_event where id = ?
                 """, Timestamp.class, message.id()).toInstant()).isEqualTo(retryAt);
+    }
+
+    @Test
+    void appendFailsOutsideATransactionAndWritesNoRow() {
+        OutboxMessage message = message(
+                "00000000-0000-0000-0000-000000000001", "ticket.created");
+
+        assertThatThrownBy(() -> repository.append(message))
+                .isInstanceOf(OutboxTransactionRequiredException.class);
+
+        assertThat(jdbc.queryForObject(
+                "select count(*) from outbox_event", Integer.class)).isZero();
+    }
+
+    @Test
+    void businessWriteAndOutboxAppendCommitTogether() {
+        String tenantId = "tx-visible";
+        OutboxMessage message = message(
+                "00000000-0000-0000-0000-000000000001", tenantId, "tenant.created");
+
+        transactions.executeWithoutResult(status -> {
+            jdbc.update("""
+                    insert into tenant(id, display_name, status)
+                    values (?, 'Visible tenant', 'ACTIVE')
+                    """, tenantId);
+            repository.append(message);
+        });
+
+        assertThat(jdbc.queryForObject(
+                "select count(*) from tenant where id = ?", Integer.class, tenantId)).isEqualTo(1);
+        assertThat(jdbc.queryForObject(
+                "select count(*) from outbox_event where id = ?", Integer.class, message.id())).isEqualTo(1);
+    }
+
+    @Test
+    void businessWriteAndOutboxAppendRollBackTogether() {
+        String tenantId = "tx-rolled-back";
+        OutboxMessage message = message(
+                "00000000-0000-0000-0000-000000000001", tenantId, "tenant.created");
+
+        assertThatThrownBy(() -> transactions.executeWithoutResult(status -> {
+            jdbc.update("""
+                    insert into tenant(id, display_name, status)
+                    values (?, 'Rolled back tenant', 'ACTIVE')
+                    """, tenantId);
+            repository.append(message);
+            throw new IllegalStateException("force rollback");
+        })).hasMessage("force rollback");
+
+        assertThat(jdbc.queryForObject(
+                "select count(*) from tenant where id = ?", Integer.class, tenantId)).isZero();
+        assertThat(jdbc.queryForObject(
+                "select count(*) from outbox_event where id = ?", Integer.class, message.id())).isZero();
+    }
+
+    private void appendInTransaction(OutboxMessage message) {
+        transactions.executeWithoutResult(status -> repository.append(message));
     }
 
     private static OutboxMessage message(String id, String eventType) {

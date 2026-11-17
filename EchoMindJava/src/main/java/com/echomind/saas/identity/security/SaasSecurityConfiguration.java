@@ -1,7 +1,9 @@
 package com.echomind.saas.identity.security;
 
+import com.echomind.config.EchoMindProperties;
 import com.echomind.saas.identity.application.ActorScopeResolver;
 import java.util.Base64;
+import java.util.Collection;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import org.springframework.beans.factory.annotation.Value;
@@ -12,7 +14,11 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
+import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
+import org.springframework.security.oauth2.core.OAuth2TokenValidator;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtClaimValidator;
+import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.web.SecurityFilterChain;
 
@@ -30,15 +36,39 @@ public final class SaasSecurityConfiguration {
 
     @Bean
     JwtDecoder jwtDecoder(
-            @Value("${echomind.security.jwt.hmac-secret}") String encodedSecret) {
+            @Value("${echomind.security.jwt.hmac-secret}") String encodedSecret,
+            EchoMindProperties properties) {
         byte[] secret = Base64.getDecoder().decode(encodedSecret);
         if (secret.length < MINIMUM_HMAC_SECRET_BYTES) {
             throw new IllegalStateException("JWT HMAC secret must decode to at least 32 bytes");
         }
         SecretKey key = new SecretKeySpec(secret, "HmacSHA256");
-        return NimbusJwtDecoder.withSecretKey(key)
+        EchoMindProperties.Jwt jwtProperties = properties.getSecurity().getJwt();
+        String issuer = requireConfigured(jwtProperties.getIssuer(), "JWT issuer");
+        String audience = requireConfigured(jwtProperties.getAudience(), "JWT audience");
+        NimbusJwtDecoder decoder = NimbusJwtDecoder.withSecretKey(key)
                 .macAlgorithm(MacAlgorithm.HS256)
                 .build();
+        OAuth2TokenValidator<org.springframework.security.oauth2.jwt.Jwt> audienceValidator =
+                new JwtClaimValidator<>("aud", value -> containsAudience(value, audience));
+        decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
+                JwtValidators.createDefaultWithIssuer(issuer),
+                audienceValidator));
+        return decoder;
+    }
+
+    private static String requireConfigured(String value, String label) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalStateException(label + " must be configured");
+        }
+        return value;
+    }
+
+    private static boolean containsAudience(Object value, String expected) {
+        if (value instanceof String audience) {
+            return expected.equals(audience);
+        }
+        return value instanceof Collection<?> audiences && audiences.contains(expected);
     }
 
     @Bean

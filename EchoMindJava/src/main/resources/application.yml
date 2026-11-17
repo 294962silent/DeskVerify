@@ -58,6 +58,8 @@ echomind:
   security:
     jwt:
       hmac-secret: ${ECHOMIND_JWT_HMAC_SECRET}
+      issuer: ${ECHOMIND_JWT_ISSUER:echomind-local}
+      audience: ${ECHOMIND_JWT_AUDIENCE:echomind-api}
   llm:
     fallback-enabled: ${LLM_FALLBACK_ENABLED:true}
   memory:
