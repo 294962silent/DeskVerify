@@ -66,6 +66,17 @@ class GlobalApiExceptionHandlerTest {
     }
 
     @Test
+    void mapsMissingOwnedResourceToStableNotFoundResponse() throws Exception {
+        mvc.perform(get("/resource-not-found").header("X-Request-Id", "request-missing"))
+                .andExpect(status().isNotFound())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"))
+                .andExpect(jsonPath("$.message").value("resource not found"))
+                .andExpect(jsonPath("$.requestId").value("request-missing"))
+                .andExpect(jsonPath("$.retryable").value(false));
+    }
+
+    @Test
     void mapsBeanValidationFailureToBadRequest() throws Exception {
         expectValidationFailure(mvc.perform(post("/validate")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -115,6 +126,11 @@ class GlobalApiExceptionHandlerTest {
         @GetMapping("/idempotency-conflict")
         String idempotencyConflict() {
             throw new IdempotencyConflictException("raw-idempotency-diagnostic");
+        }
+
+        @GetMapping("/resource-not-found")
+        String resourceNotFound() {
+            throw new ResourceNotFoundException();
         }
 
         @PostMapping("/validate")

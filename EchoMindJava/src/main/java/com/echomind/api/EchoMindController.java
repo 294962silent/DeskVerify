@@ -21,6 +21,7 @@ import com.echomind.memory.MemoryManager;
 import com.echomind.memory.MessageRole;
 import com.echomind.monitor.PerformanceMonitor;
 import com.echomind.saas.identity.domain.ActorScope;
+import com.echomind.saas.identity.domain.TenantScopedActorKey;
 import com.echomind.skill.SkillManager;
 import com.echomind.tool.KnowledgeToolManager;
 import com.echomind.tool.ToolResult;
@@ -35,6 +36,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.MediaType;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -105,12 +107,13 @@ public class EchoMindController {
     public ChatResponse chat(
             @Valid @RequestBody ChatRequest request,
             @AuthenticationPrincipal ActorScope actorScope) {
-        String userId = actorScope.userId().value();
+        String actorKey = new TenantScopedActorKey(
+                actorScope.tenantId(), actorScope.userId()).value();
         String conversationId = request.conversationId() == null || request.conversationId().isBlank()
                 ? UUID.randomUUID().toString()
                 : request.conversationId();
         String requestId = UUID.randomUUID().toString().substring(0, 8);
-        MemoryContext memoryContext = memoryManager.getContext(userId, conversationId, request.message());
+        MemoryContext memoryContext = memoryManager.getContext(actorKey, conversationId, request.message());
         String memoryText = memoryContext.toPromptText(objectMapper);
         List<Map<String, String>> history = memoryContext.recentMessages().stream()
                 .skip(Math.max(0, memoryContext.recentMessages().size() - 5))
@@ -136,14 +139,14 @@ public class EchoMindController {
         String knowledgeText = buildKnowledgeContext(knowledge.data());
         String fullContext = join(memoryText, knowledgeText);
         OrchestratorResult result = orchestrator.run(
-                AgentRequest.of(request.message(), userId, conversationId, fullContext, history, intentResult, requestId),
+                AgentRequest.of(request.message(), actorKey, conversationId, fullContext, history, intentResult, requestId),
                 knowledgeTrace == null ? List.of() : List.of(knowledgeTrace)
         );
         AnswerVerifier.VerificationResult verification = answerVerifier.verify(request.message(), result.response(), fullContext);
         boolean escalated = result.escalated() || verification.needEscalation();
-        memoryManager.addMessage(userId, conversationId, MessageRole.USER, request.message());
-        memoryManager.addMessage(userId, conversationId, MessageRole.ASSISTANT, result.response());
-        memoryManager.updateProfile(userId, conversationId);
+        memoryManager.addMessage(actorKey, conversationId, MessageRole.USER, request.message());
+        memoryManager.addMessage(actorKey, conversationId, MessageRole.ASSISTANT, result.response());
+        memoryManager.updateProfile(actorKey, conversationId);
         return new ChatResponse(
                 conversationId,
                 result.requestId(),
@@ -177,6 +180,7 @@ public class EchoMindController {
     }
 
     @PostMapping("/knowledge/add")
+    @PreAuthorize("hasRole('TENANT_ADMIN')")
     @Operation(summary = "批量添加知识文档", description = "将文档切片后写入 Java 版持久化知识库。")
     public Map<String, Object> addKnowledge(@Valid @RequestBody BatchDocInput input) {
         List<Map<String, String>> docs = input.documents().stream()
@@ -187,6 +191,7 @@ public class EchoMindController {
     }
 
     @PostMapping(value = "/knowledge/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('TENANT_ADMIN')")
     @Operation(summary = "上传知识库文件", description = "支持上传 .txt、.md、.json 文件，最大 10MB。JSON 文件格式为数组：[{\"title\":\"...\",\"content\":\"...\"}]。")
     public Map<String, Object> uploadKnowledge(@Parameter(description = "知识库文件") @RequestParam("file") MultipartFile file) throws Exception {
         if (file.getSize() > 10L * 1024 * 1024) {
@@ -238,6 +243,7 @@ public class EchoMindController {
     }
 
     @PostMapping("/skills/reload")
+    @PreAuthorize("hasRole('TENANT_ADMIN')")
     @Operation(summary = "重新加载 Skills", description = "运行时重新扫描 Skill 目录，不需要重启服务。")
     public Map<String, Object> reloadSkills() {
         skillManager.reload();
@@ -245,34 +251,42 @@ public class EchoMindController {
     }
 
     @GetMapping(value = "/metrics", produces = "text/plain; version=0.0.4; charset=utf-8")
+    @PreAuthorize("hasRole('TENANT_ADMIN')")
     @Operation(summary = "Prometheus 指标", description = "返回 Prometheus 文本格式指标，兼容 Python 版 /metrics 路径。")
     public ResponseEntity<String> metrics() {
         return ResponseEntity.ok(prometheusMeterRegistry.scrape());
     }
 
     @PostMapping(value = "/eval/jobs", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasRole('TENANT_ADMIN')")
     @Operation(summary = "提交异步评测任务", description = "立即返回任务 ID；使用 GET /eval/jobs/{jobId} 查询进度和最终报告。")
-    public ResponseEntity<Map<String, Object>> submitEvalJob(
+    public ResponseEntity<com.echomind.saas.evaluation.domain.EvaluationJob> submitEvalJob(
             @RequestBody(required = false) EvalRunRequest request,
             @AuthenticationPrincipal ActorScope actorScope) {
         return ResponseEntity.status(HttpStatus.ACCEPTED)
-                .body(evaluationJobService.submit(request, actorScope.userId()));
+                .body(evaluationJobService.submit(request, actorScope));
     }
 
     @GetMapping("/eval/jobs/{jobId}")
+    @PreAuthorize("hasRole('TENANT_ADMIN')")
     @Operation(summary = "查询评测任务", description = "返回评测任务的状态、进度、失败原因或最终报告。")
-    public ResponseEntity<Map<String, Object>> getEvalJob(@org.springframework.web.bind.annotation.PathVariable String jobId) {
-        Map<String, Object> job = evaluationJobService.get(jobId);
-        return job == null ? ResponseEntity.notFound().build() : ResponseEntity.ok(job);
+    public ResponseEntity<com.echomind.saas.evaluation.domain.EvaluationJob> getEvalJob(
+            @org.springframework.web.bind.annotation.PathVariable String jobId,
+            @AuthenticationPrincipal ActorScope actorScope) {
+        return ResponseEntity.ok(evaluationJobService.get(jobId, actorScope));
     }
 
     @GetMapping("/eval/jobs")
+    @PreAuthorize("hasRole('TENANT_ADMIN')")
     @Operation(summary = "查询最近评测任务", description = "读取持久化的最近评测任务，刷新页面后可恢复结果。")
-    public Map<String, Object> listEvalJobs(@RequestParam(defaultValue = "10") int limit) {
-        return Map.of("items", evaluationJobService.list(limit));
+    public Map<String, Object> listEvalJobs(
+            @RequestParam(defaultValue = "10") int limit,
+            @AuthenticationPrincipal ActorScope actorScope) {
+        return Map.of("items", evaluationJobService.list(actorScope, limit));
     }
 
     @PostMapping(value = "/eval/run", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasRole('TENANT_ADMIN')")
     @Operation(summary = "同步运行评测（兼容接口）", description = "兼容旧调用方；前端应使用异步 /eval/jobs 接口。", deprecated = true)
     public Map<String, Object> eval(
             @RequestBody(required = false) EvalRunRequest request,

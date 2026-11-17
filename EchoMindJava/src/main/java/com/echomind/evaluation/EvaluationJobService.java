@@ -2,6 +2,10 @@ package com.echomind.evaluation;
 
 import com.echomind.api.dto.EvalRunRequest;
 import com.echomind.config.EchoMindProperties;
+import com.echomind.saas.api.error.ResourceNotFoundException;
+import com.echomind.saas.evaluation.domain.EvaluationJob;
+import com.echomind.saas.identity.domain.ActorScope;
+import com.echomind.saas.identity.domain.TenantId;
 import com.echomind.saas.identity.domain.UserId;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -88,13 +92,15 @@ public class EvaluationJobService {
         }
     }
 
-    public synchronized Map<String, Object> submit(EvalRunRequest request, UserId authenticatedUserId) {
-        if (authenticatedUserId == null) {
-            throw new IllegalArgumentException("authenticated user is required");
+    public synchronized EvaluationJob submit(EvalRunRequest request, ActorScope actor) {
+        if (actor == null) {
+            throw new IllegalArgumentException("authenticated actor is required");
         }
         String jobId = UUID.randomUUID().toString();
         Map<String, Object> job = new LinkedHashMap<>();
         job.put("job_id", jobId);
+        job.put("tenant_id", actor.tenantId().value());
+        job.put("owner_user_id", actor.userId().value());
         job.put("status", "queued");
         job.put("phase", "queued");
         job.put("progress", 0);
@@ -106,18 +112,32 @@ public class EvaluationJobService {
         jobs.put(jobId, job);
         trim();
         save();
-        executor.submit(() -> execute(jobId, request, authenticatedUserId));
+        executor.submit(() -> execute(jobId, request, actor.userId()));
         return publicJob(job);
     }
 
-    public Map<String, Object> get(String jobId) {
+    public EvaluationJob get(String jobId, ActorScope actor) {
+        if (actor == null) {
+            throw new IllegalArgumentException("authenticated actor is required");
+        }
         Map<String, Object> job = jobs.get(jobId);
-        return job == null ? null : publicJob(job);
+        if (job == null || !ownedBy(job, actor)) {
+            throw new ResourceNotFoundException();
+        }
+        return publicJob(job);
     }
 
-    public List<Map<String, Object>> list(int limit) {
+    public List<EvaluationJob> list(ActorScope actor) {
+        return list(actor, MAX_STORED_JOBS);
+    }
+
+    public List<EvaluationJob> list(ActorScope actor, int limit) {
+        if (actor == null) {
+            throw new IllegalArgumentException("authenticated actor is required");
+        }
         int boundedLimit = Math.max(1, Math.min(limit, MAX_STORED_JOBS));
         return jobs.values().stream()
+                .filter(job -> ownedBy(job, actor))
                 .sorted(Comparator.comparing(job -> String.valueOf(job.getOrDefault("created_at", "")), Comparator.reverseOrder()))
                 .limit(boundedLimit)
                 .map(this::publicJob)
@@ -197,12 +217,34 @@ public class EvaluationJobService {
         keep.forEach(job -> jobs.put(String.valueOf(job.get("job_id")), job));
     }
 
-    private Map<String, Object> publicJob(Map<String, Object> job) {
-        Map<String, Object> response = new LinkedHashMap<>();
-        for (String key : List.of("job_id", "status", "phase", "progress", "created_at", "started_at", "finished_at", "error", "report")) {
-            response.put(key, job.get(key));
-        }
-        return response;
+    @SuppressWarnings("unchecked")
+    private EvaluationJob publicJob(Map<String, Object> job) {
+        Object rawReport = job.get("report");
+        Map<String, Object> report = rawReport instanceof Map<?, ?> map
+                ? (Map<String, Object>) map
+                : null;
+        return new EvaluationJob(
+                String.valueOf(job.get("job_id")),
+                new TenantId(String.valueOf(job.get("tenant_id"))),
+                new UserId(String.valueOf(job.get("owner_user_id"))),
+                nullableString(job.get("status")),
+                nullableString(job.get("phase")),
+                job.get("progress") instanceof Number number ? number.intValue() : 0,
+                nullableString(job.get("created_at")),
+                nullableString(job.get("started_at")),
+                nullableString(job.get("finished_at")),
+                nullableString(job.get("error")),
+                report
+        );
+    }
+
+    private boolean ownedBy(Map<String, Object> job, ActorScope actor) {
+        return actor.tenantId().value().equals(job.get("tenant_id"))
+                && actor.userId().value().equals(job.get("owner_user_id"));
+    }
+
+    private String nullableString(Object value) {
+        return value == null ? null : String.valueOf(value);
     }
 
     private Path jobsPath() {

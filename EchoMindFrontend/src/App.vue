@@ -143,6 +143,10 @@
                 <input v-model="settings.userId" @change="persist" placeholder="u1001" />
               </label>
               <label>
+                <span>Java 访问令牌</span>
+                <input v-model="accessToken" type="password" autocomplete="off" @change="applyAccessToken" placeholder="仅在当前浏览器会话中使用" />
+              </label>
+              <label>
                 <span>会话 ID</span>
                 <input v-model="settings.conversationId" @change="persist" placeholder="自动生成" />
               </label>
@@ -340,8 +344,10 @@ import {
   startEvaluation,
   uploadKnowledge
 } from './lib/backends'
+import { getAccessToken, saveAccessToken } from './lib/auth.js'
 
 const settings = reactive(createInitialSettings())
+const accessToken = ref(getAccessToken())
 const activeView = ref('chat')
 const messages = ref([])
 const draft = ref('')
@@ -403,6 +409,14 @@ onBeforeUnmount(() => {
 })
 
 function persist() { saveSettings(settings) }
+
+function applyAccessToken() {
+  saveAccessToken(accessToken.value)
+  accessToken.value = getAccessToken()
+  healthOk.value = false
+  healthLabel.value = '未检查'
+  refreshConsole()
+}
 
 function updateSidebarHeight() {
   const sidebar = sidebarRef.value

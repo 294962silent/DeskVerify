@@ -1,3 +1,5 @@
+import { withAuthorization } from './auth.js'
+
 const DEFAULT_BACKENDS = {
   python: {
     id: 'python',
@@ -39,27 +41,27 @@ export function backendMeta(type, settings) {
 }
 
 export async function requestHealth(type, settings) {
-  return requestJson(backendMeta(type, settings).baseUrl, '/health')
+  return requestJson(type, backendMeta(type, settings).baseUrl, '/health')
 }
 
 export async function requestMonitor(type, settings) {
-  return requestJson(backendMeta(type, settings).baseUrl, '/monitor')
+  return requestJson(type, backendMeta(type, settings).baseUrl, '/monitor')
 }
 
 export async function requestSkills(type, settings) {
-  return requestJson(backendMeta(type, settings).baseUrl, '/skills')
+  return requestJson(type, backendMeta(type, settings).baseUrl, '/skills')
 }
 
 export async function reloadSkills(type, settings) {
-  return requestJson(backendMeta(type, settings).baseUrl, '/skills/reload', { method: 'POST' })
+  return requestJson(type, backendMeta(type, settings).baseUrl, '/skills/reload', { method: 'POST' })
 }
 
 export async function requestKnowledgeStats(type, settings) {
-  return requestJson(backendMeta(type, settings).baseUrl, '/knowledge/stats')
+  return requestJson(type, backendMeta(type, settings).baseUrl, '/knowledge/stats')
 }
 
 export async function startEvaluation(type, settings, body = null) {
-  return requestJson(backendMeta(type, settings).baseUrl, '/eval/jobs', {
+  return requestJson(type, backendMeta(type, settings).baseUrl, '/eval/jobs', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: body ? JSON.stringify(body) : undefined
@@ -67,22 +69,22 @@ export async function startEvaluation(type, settings, body = null) {
 }
 
 export async function requestEvaluationJob(type, settings, jobId) {
-  return requestJson(backendMeta(type, settings).baseUrl, `/eval/jobs/${encodeURIComponent(jobId)}`)
+  return requestJson(type, backendMeta(type, settings).baseUrl, `/eval/jobs/${encodeURIComponent(jobId)}`)
 }
 
 export async function requestEvaluationJobs(type, settings, limit = 1) {
-  return requestJson(backendMeta(type, settings).baseUrl, `/eval/jobs?limit=${encodeURIComponent(limit)}`)
+  return requestJson(type, backendMeta(type, settings).baseUrl, `/eval/jobs?limit=${encodeURIComponent(limit)}`)
 }
 
 export async function requestSearch(type, settings, query, topK = 5) {
   const params = new URLSearchParams({ query, top_k: String(topK) })
-  return requestJson(backendMeta(type, settings).baseUrl, `/search?${params}`, { method: 'POST' })
+  return requestJson(type, backendMeta(type, settings).baseUrl, `/search?${params}`, { method: 'POST' })
 }
 
 export async function requestChat(type, settings, message) {
   const meta = backendMeta(type, settings)
   const payload = buildChatPayload(type, settings, message)
-  const raw = await requestJson(meta.baseUrl, '/chat', {
+  const raw = await requestJson(type, meta.baseUrl, '/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
@@ -92,12 +94,12 @@ export async function requestChat(type, settings, message) {
 
 export async function requestToolTrace(type, settings, requestId) {
   if (!requestId) return null
-  const raw = await requestJson(backendMeta(type, settings).baseUrl, `/trace/tool/${encodeURIComponent(requestId)}`)
+  const raw = await requestJson(type, backendMeta(type, settings).baseUrl, `/trace/tool/${encodeURIComponent(requestId)}`)
   return normalizeToolTraceResponse(raw)
 }
 
 export async function addKnowledge(type, settings, documents) {
-  return requestJson(backendMeta(type, settings).baseUrl, '/knowledge/add', {
+  return requestJson(type, backendMeta(type, settings).baseUrl, '/knowledge/add', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ documents })
@@ -107,7 +109,7 @@ export async function addKnowledge(type, settings, documents) {
 export async function uploadKnowledge(type, settings, file) {
   const form = new FormData()
   form.append('file', file)
-  return requestJson(backendMeta(type, settings).baseUrl, '/knowledge/upload', {
+  return requestJson(type, backendMeta(type, settings).baseUrl, '/knowledge/upload', {
     method: 'POST',
     body: form
   })
@@ -160,9 +162,9 @@ function normalizeToolTraceResponse(raw) {
   }
 }
 
-async function requestJson(baseUrl, path, options = {}) {
+async function requestJson(type, baseUrl, path, options = {}) {
   const url = `${normalizeBaseUrl(baseUrl)}${path}`
-  const response = await fetch(url, options)
+  const response = await fetch(url, withAuthorization(type, options))
   const text = await response.text()
   let data = null
   try {

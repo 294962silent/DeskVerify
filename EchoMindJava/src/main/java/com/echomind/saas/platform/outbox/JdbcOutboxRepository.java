@@ -14,7 +14,7 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.support.TransactionTemplate;
 
 @Repository
-public final class JdbcOutboxRepository implements OutboxRepository {
+public class JdbcOutboxRepository implements OutboxRepository {
 
     private final JdbcTemplate jdbc;
     private final TransactionTemplate transactions;

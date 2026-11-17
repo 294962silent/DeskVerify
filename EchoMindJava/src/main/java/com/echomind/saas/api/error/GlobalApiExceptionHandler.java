@@ -22,6 +22,15 @@ public final class GlobalApiExceptionHandler {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(GlobalApiExceptionHandler.class);
 
+    @ExceptionHandler(ResourceNotFoundException.class)
+    ResponseEntity<ApiErrorResponse> resourceNotFound(
+            ResourceNotFoundException exception,
+            HttpServletRequest request) {
+        logDiagnostic(request, exception);
+        return response(HttpStatus.NOT_FOUND, ErrorCode.RESOURCE_NOT_FOUND,
+                "resource not found", request, false);
+    }
+
     @ExceptionHandler(TenantAccessDeniedException.class)
     ResponseEntity<ApiErrorResponse> tenantDenied(
             TenantAccessDeniedException exception,

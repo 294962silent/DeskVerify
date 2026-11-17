@@ -9,7 +9,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 @Repository
-public final class JdbcTenantMembershipRepository
+public class JdbcTenantMembershipRepository
         implements TenantMembershipRepository {
 
     private final JdbcTemplate jdbc;
