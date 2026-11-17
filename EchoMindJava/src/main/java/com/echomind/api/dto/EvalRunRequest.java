@@ -26,8 +26,6 @@ public record EvalRunRequest(
             String question,
             @Schema(description = "多轮对话输入")
             List<String> turns,
-            @Schema(description = "用户 ID", example = "eval_user")
-            String userId,
             @Schema(description = "会话 ID", example = "eval_conv_001")
             String conversationId
     ) {

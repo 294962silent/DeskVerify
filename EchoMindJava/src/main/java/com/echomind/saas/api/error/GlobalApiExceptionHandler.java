@@ -21,7 +21,6 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 public final class GlobalApiExceptionHandler {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(GlobalApiExceptionHandler.class);
-    private static final String REQUEST_ID_HEADER = "X-Request-Id";
 
     @ExceptionHandler(TenantAccessDeniedException.class)
     ResponseEntity<ApiErrorResponse> tenantDenied(
@@ -70,8 +69,7 @@ public final class GlobalApiExceptionHandler {
     }
 
     private static String requestId(HttpServletRequest request) {
-        String requestId = request.getHeader(REQUEST_ID_HEADER);
-        return requestId == null || requestId.isBlank() ? "unavailable" : requestId;
+        return RequestIdSanitizer.sanitize(request.getHeader("X-Request-Id"));
     }
 
     private static void logDiagnostic(HttpServletRequest request, Exception exception) {

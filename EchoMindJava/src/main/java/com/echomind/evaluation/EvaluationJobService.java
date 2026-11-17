@@ -2,6 +2,7 @@ package com.echomind.evaluation;
 
 import com.echomind.api.dto.EvalRunRequest;
 import com.echomind.config.EchoMindProperties;
+import com.echomind.saas.identity.domain.UserId;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
@@ -87,7 +88,10 @@ public class EvaluationJobService {
         }
     }
 
-    public synchronized Map<String, Object> submit(EvalRunRequest request) {
+    public synchronized Map<String, Object> submit(EvalRunRequest request, UserId authenticatedUserId) {
+        if (authenticatedUserId == null) {
+            throw new IllegalArgumentException("authenticated user is required");
+        }
         String jobId = UUID.randomUUID().toString();
         Map<String, Object> job = new LinkedHashMap<>();
         job.put("job_id", jobId);
@@ -102,7 +106,7 @@ public class EvaluationJobService {
         jobs.put(jobId, job);
         trim();
         save();
-        executor.submit(() -> execute(jobId, request));
+        executor.submit(() -> execute(jobId, request, authenticatedUserId));
         return publicJob(job);
     }
 
@@ -135,7 +139,7 @@ public class EvaluationJobService {
         save();
     }
 
-    private void execute(String jobId, EvalRunRequest request) {
+    private void execute(String jobId, EvalRunRequest request, UserId authenticatedUserId) {
         Map<String, Object> job = jobs.get(jobId);
         if (job == null) {
             return;
@@ -148,7 +152,7 @@ public class EvaluationJobService {
             save();
         }
         try {
-            Map<String, Object> report = evaluator.run(request);
+            Map<String, Object> report = evaluator.run(request, authenticatedUserId);
             synchronized (this) {
                 job.put("status", "succeeded");
                 job.put("phase", "completed");

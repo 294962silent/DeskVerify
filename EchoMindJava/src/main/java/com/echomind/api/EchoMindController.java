@@ -20,6 +20,7 @@ import com.echomind.memory.MemoryContext;
 import com.echomind.memory.MemoryManager;
 import com.echomind.memory.MessageRole;
 import com.echomind.monitor.PerformanceMonitor;
+import com.echomind.saas.identity.domain.ActorScope;
 import com.echomind.skill.SkillManager;
 import com.echomind.tool.KnowledgeToolManager;
 import com.echomind.tool.ToolResult;
@@ -33,6 +34,7 @@ import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.MediaType;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -100,8 +102,10 @@ public class EchoMindController {
 
     @PostMapping("/chat")
     @Operation(summary = "智能客服对话", description = "执行完整对话链路：记忆读取、知识库检索、意图识别、多 Agent 路由、回答校验和记忆写入。")
-    public ChatResponse chat(@Valid @RequestBody ChatRequest request) {
-        String userId = request.userIdOrDefault();
+    public ChatResponse chat(
+            @Valid @RequestBody ChatRequest request,
+            @AuthenticationPrincipal ActorScope actorScope) {
+        String userId = actorScope.userId().value();
         String conversationId = request.conversationId() == null || request.conversationId().isBlank()
                 ? UUID.randomUUID().toString()
                 : request.conversationId();
@@ -248,8 +252,11 @@ public class EchoMindController {
 
     @PostMapping(value = "/eval/jobs", consumes = MediaType.APPLICATION_JSON_VALUE)
     @Operation(summary = "提交异步评测任务", description = "立即返回任务 ID；使用 GET /eval/jobs/{jobId} 查询进度和最终报告。")
-    public ResponseEntity<Map<String, Object>> submitEvalJob(@RequestBody(required = false) EvalRunRequest request) {
-        return ResponseEntity.status(HttpStatus.ACCEPTED).body(evaluationJobService.submit(request));
+    public ResponseEntity<Map<String, Object>> submitEvalJob(
+            @RequestBody(required = false) EvalRunRequest request,
+            @AuthenticationPrincipal ActorScope actorScope) {
+        return ResponseEntity.status(HttpStatus.ACCEPTED)
+                .body(evaluationJobService.submit(request, actorScope.userId()));
     }
 
     @GetMapping("/eval/jobs/{jobId}")
@@ -267,8 +274,10 @@ public class EchoMindController {
 
     @PostMapping(value = "/eval/run", consumes = MediaType.APPLICATION_JSON_VALUE)
     @Operation(summary = "同步运行评测（兼容接口）", description = "兼容旧调用方；前端应使用异步 /eval/jobs 接口。", deprecated = true)
-    public Map<String, Object> eval(@RequestBody(required = false) EvalRunRequest request) {
-        return evaluator.run(request);
+    public Map<String, Object> eval(
+            @RequestBody(required = false) EvalRunRequest request,
+            @AuthenticationPrincipal ActorScope actorScope) {
+        return evaluator.run(request, actorScope.userId());
     }
 
     private boolean shouldUseKnowledge(IntentCategory intent) {

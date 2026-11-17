@@ -62,7 +62,7 @@ class JdbcTenantMembershipRepositoryTest {
     }
 
     @Test
-    void excludesAnotherTenantForTheSameUser() {
+    void keepsSameUserAvailableInAnotherActiveTenant() {
         jdbc.update("insert into tenant(id, display_name, status) values('tenant-b','B','ACTIVE')");
         jdbc.update("""
                 insert into tenant_membership(tenant_id, user_id, status)
@@ -118,6 +118,28 @@ class JdbcTenantMembershipRepositoryTest {
 
         TenantId tenantId = new TenantId("tenant-a");
         UserId userId = new UserId("user-2");
+
+        assertThat(repository.findRoles(tenantId, userId)).isEmpty();
+        assertThat(repository.findCustomerIds(tenantId, userId)).isEmpty();
+    }
+
+    @Test
+    void filtersRoleBindingsAndCustomersForADisabledTenant() {
+        jdbc.update("update tenant set status = 'DISABLED' where id = 'tenant-a'");
+
+        TenantId tenantId = new TenantId("tenant-a");
+        UserId userId = new UserId("user-1");
+
+        assertThat(repository.findRoles(tenantId, userId)).isEmpty();
+        assertThat(repository.findCustomerIds(tenantId, userId)).isEmpty();
+    }
+
+    @Test
+    void filtersRoleBindingsAndCustomersForADisabledUser() {
+        jdbc.update("update app_user set status = 'DISABLED' where id = 'user-1'");
+
+        TenantId tenantId = new TenantId("tenant-a");
+        UserId userId = new UserId("user-1");
 
         assertThat(repository.findRoles(tenantId, userId)).isEmpty();
         assertThat(repository.findCustomerIds(tenantId, userId)).isEmpty();

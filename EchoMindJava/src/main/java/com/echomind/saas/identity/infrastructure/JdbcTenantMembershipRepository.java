@@ -25,7 +25,12 @@ public final class JdbcTenantMembershipRepository
                 from role_binding rb
                 join tenant_membership tm
                   on tm.tenant_id = rb.tenant_id and tm.user_id = rb.user_id
-                where rb.tenant_id = ? and rb.user_id = ? and tm.status = 'ACTIVE'
+                join tenant t on t.id = tm.tenant_id
+                join app_user u on u.id = tm.user_id
+                where rb.tenant_id = ? and rb.user_id = ?
+                  and tm.status = 'ACTIVE'
+                  and t.status = 'ACTIVE'
+                  and u.status = 'ACTIVE'
                 """, String.class, tenantId.value(), userId.value())
                 .stream()
                 .map(ActorRole::valueOf)
@@ -39,7 +44,12 @@ public final class JdbcTenantMembershipRepository
                 from customer_membership cm
                 join tenant_membership tm
                   on tm.tenant_id = cm.tenant_id and tm.user_id = cm.user_id
-                where cm.tenant_id = ? and cm.user_id = ? and tm.status = 'ACTIVE'
+                join tenant t on t.id = tm.tenant_id
+                join app_user u on u.id = tm.user_id
+                where cm.tenant_id = ? and cm.user_id = ?
+                  and tm.status = 'ACTIVE'
+                  and t.status = 'ACTIVE'
+                  and u.status = 'ACTIVE'
                 """, String.class, tenantId.value(), userId.value()));
     }
 }

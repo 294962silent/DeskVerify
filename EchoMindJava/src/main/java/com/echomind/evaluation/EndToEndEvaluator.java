@@ -8,6 +8,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.echomind.intent.IntentRecognizer;
 import com.echomind.intent.IntentResult;
+import com.echomind.saas.identity.domain.UserId;
 import org.springframework.stereotype.Service;
 
 import java.nio.file.Files;
@@ -38,7 +39,10 @@ public class EndToEndEvaluator {
         this.properties = properties;
     }
 
-    public Map<String, Object> run(EvalRunRequest request) {
+    public Map<String, Object> run(EvalRunRequest request, UserId authenticatedUserId) {
+        if (authenticatedUserId == null) {
+            throw new IllegalArgumentException("authenticated user is required");
+        }
         List<EvalRunRequest.IntentCase> intentCases = request != null && request.intentCases() != null
                 ? request.intentCases()
                 : defaultIntentCases();
@@ -69,7 +73,7 @@ public class EndToEndEvaluator {
             List<String> turns = c.turns() != null && !c.turns().isEmpty() ? c.turns() : List.of(c.question());
             List<Map<String, String>> history = new ArrayList<>();
             String convId = c.conversationId() == null ? "eval_" + UUID.randomUUID() : c.conversationId();
-            String userId = c.userId() == null ? "eval_user" : c.userId();
+            String userId = authenticatedUserId.value();
             for (String turn : turns) {
                 var response = orchestrator.run(AgentRequest.of(turn, userId, convId, history.toString(), history));
                 QualityScores scores = judge.judge(turn, response.response(), history.toString());
@@ -131,10 +135,10 @@ public class EndToEndEvaluator {
 
     private List<EvalRunRequest.DialogCase> defaultDialogCases() {
         return List.of(
-                new EvalRunRequest.DialogCase("我的订单 #12345 还没到，已经超时了", null, null, null),
-                new EvalRunRequest.DialogCase("应用登录一直报错 401", null, null, null),
-                new EvalRunRequest.DialogCase("为什么这个月多扣了 50 块钱？", null, null, null),
-                new EvalRunRequest.DialogCase(null, List.of("你好，我想退款", "订单号是 #12345", "退款多久能到账？"), null, null)
+                new EvalRunRequest.DialogCase("我的订单 #12345 还没到，已经超时了", null, null),
+                new EvalRunRequest.DialogCase("应用登录一直报错 401", null, null),
+                new EvalRunRequest.DialogCase("为什么这个月多扣了 50 块钱？", null, null),
+                new EvalRunRequest.DialogCase(null, List.of("你好，我想退款", "订单号是 #12345", "退款多久能到账？"), null)
         );
     }
 

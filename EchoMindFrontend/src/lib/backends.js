@@ -116,7 +116,6 @@ export async function uploadKnowledge(type, settings, file) {
 function buildChatPayload(type, settings, message) {
   return {
     message,
-    user_id: settings.userId || 'anonymous',
     conv_id: settings.conversationId || undefined
   }
 }
