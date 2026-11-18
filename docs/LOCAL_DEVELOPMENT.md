@@ -110,6 +110,33 @@ curl.exe -H "Authorization: Bearer $env:DEMO_JWT" `
 
 更换 `tenant_id` 后，同一个 `customer-001` 路径会返回对应租户的数据；未映射给当前 actor 的 customer ID 返回 `404`，避免泄露其他租户或客户是否存在。
 
+## Ticket Workflow
+
+Java API 提供以下工单端点：
+
+```text
+POST /api/v1/tickets
+GET  /api/v1/tickets/{ticketId}
+GET  /api/v1/tickets
+POST /api/v1/tickets/{ticketId}/claim
+POST /api/v1/tickets/{ticketId}/resolve
+POST /api/v1/tickets/{ticketId}/close
+POST /api/v1/tickets/{ticketId}/reopen
+GET  /api/v1/tickets/{ticketId}/events
+```
+
+创建接口必须携带 `Idempotency-Key`。首次创建返回 `201 Created`，相同 key 和相同请求的已完成重放返回 `200 OK`。未知或跨租户工单返回统一 `404`；状态或版本冲突返回 `409 TICKET_STATE_CONFLICT`。
+
+Vue 的“工单”页只从 JWT 会话和宿主提供的不可编辑上下文获取客户范围。Demo 默认使用：
+
+```text
+VITE_ECHOMIND_CUSTOMER_ID=customer-001
+```
+
+如果身份系统在 JWT 中提供 `customer_id` / `customer_ids`，前端会优先使用该 claim 作为展示上下文；后端仍只信任数据库中的真实 membership。`roles` claim 只用于显示支持操作，实际权限始终由 Java 后端校验。可用 `VITE_ECHOMIND_ROLES=SUPPORT_AGENT,TENANT_ADMIN` 为本地演示提供前端角色提示，但不能替代服务端授权。
+
+完整工单链路包括创建、认领、解决、关闭和重开；每次状态变化都写不可变 `ticket_event` 和 transactional outbox。Ticket E2E 测试使用真实 Spring context、JWT 和 MySQL 8.4。
+
 ## Frontend
 
 ```powershell

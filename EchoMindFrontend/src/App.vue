@@ -8,6 +8,7 @@
 
       <nav class="view-nav" aria-label="工作区">
         <button :class="{ active: activeView === 'chat' }" @click="activeView = 'chat'">对话</button>
+        <button :class="{ active: activeView === 'tickets' }" @click="activeView = 'tickets'">工单</button>
         <button :class="{ active: activeView === 'knowledge' }" @click="activeView = 'knowledge'">知识库</button>
         <button :class="{ active: activeView === 'evaluation' }" @click="activeView = 'evaluation'">评测</button>
       </nav>
@@ -217,6 +218,15 @@
       </div>
     </section>
 
+    <section v-else-if="activeView === 'tickets'" class="page page-tickets">
+      <TicketPanel
+        :settings="settings"
+        :access-token="accessToken"
+        :customer-id="ticketCustomerId"
+        :roles="ticketRoles"
+      />
+    </section>
+
     <section v-else-if="activeView === 'knowledge'" class="page page-knowledge">
       <div class="page-heading">
         <div class="heading-copy">
@@ -345,6 +355,8 @@ import {
   uploadKnowledge
 } from './lib/backends'
 import { getAccessToken, saveAccessToken } from './lib/auth.js'
+import { resolveSessionCustomerId, resolveSessionRoles } from './lib/tickets.js'
+import TicketPanel from './components/TicketPanel.vue'
 
 const settings = reactive(createInitialSettings())
 const accessToken = ref(getAccessToken())
@@ -377,6 +389,19 @@ let evaluationPollTimer
 let evaluationPollGeneration = 0
 
 const currentBackend = computed(() => backendMeta(settings.backend, settings))
+const ticketCustomerId = computed(() =>
+  resolveSessionCustomerId(
+    accessToken.value,
+    import.meta.env.VITE_ECHOMIND_CUSTOMER_ID || 'customer-001'
+  ))
+const ticketRoles = computed(() =>
+  resolveSessionRoles(
+    accessToken.value,
+    String(import.meta.env.VITE_ECHOMIND_ROLES || '')
+      .split(',')
+      .map((role) => role.trim())
+      .filter(Boolean)
+  ))
 const docsUrl = computed(() => `${currentBackend.value.baseUrl}/docs`)
 const userInitial = computed(() => (settings.userId || 'U').slice(0, 1).toUpperCase())
 const activeAlerts = computed(() => monitorData.value.active_alerts || [])

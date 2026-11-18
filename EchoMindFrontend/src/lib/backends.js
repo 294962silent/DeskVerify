@@ -1,5 +1,17 @@
 import { authorizedFetch } from './auth.js'
 
+export class BackendRequestError extends Error {
+  constructor(response, data) {
+    super(`${response.status} ${response.statusText}: ${
+      typeof data === 'string' ? data : JSON.stringify(data)
+    }`)
+    this.name = 'BackendRequestError'
+    this.status = response.status
+    this.statusText = response.statusText
+    this.data = data
+  }
+}
+
 const DEFAULT_BACKENDS = {
   python: {
     id: 'python',
@@ -162,9 +174,15 @@ function normalizeToolTraceResponse(raw) {
   }
 }
 
-async function requestJson(type, baseUrl, path, options = {}) {
+export async function requestJson(
+  type,
+  baseUrl,
+  path,
+  options = {},
+  authorizedFetchImpl = authorizedFetch
+) {
   const url = `${normalizeBaseUrl(baseUrl)}${path}`
-  const response = await authorizedFetch(url, type, options)
+  const response = await authorizedFetchImpl(url, type, options)
   const text = await response.text()
   let data = null
   try {
@@ -173,8 +191,7 @@ async function requestJson(type, baseUrl, path, options = {}) {
     data = text
   }
   if (!response.ok) {
-    const detail = typeof data === 'string' ? data : JSON.stringify(data)
-    throw new Error(`${response.status} ${response.statusText}: ${detail}`)
+    throw new BackendRequestError(response, data)
   }
   return data
 }
