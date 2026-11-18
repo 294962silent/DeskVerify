@@ -32,6 +32,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 /**
@@ -44,6 +45,7 @@ public class EvaluationJobService {
 
     private static final Logger log = LoggerFactory.getLogger(EvaluationJobService.class);
     private static final int MAX_STORED_JOBS_PER_OWNER = 20;
+    private static final long CLOSE_TIMEOUT_SECONDS = 5;
 
     private final EndToEndEvaluator evaluator;
     private final GoldenEvaluationService goldenEvaluationService;
@@ -206,18 +208,31 @@ public class EvaluationJobService {
     }
 
     @PreDestroy
-    public synchronized void close() {
+    public void close() {
         executor.shutdownNow();
-        for (Map<String, Object> job : jobs.values()) {
-            String status = String.valueOf(job.get("status"));
-            if ("queued".equals(status) || "running".equals(status)) {
-                job.put("status", "failed");
-                job.put("phase", "interrupted");
-                job.put("error", "评测任务因服务停止而中断，请重新运行。");
-                job.put("finished_at", now());
+        try {
+            if (!executor.awaitTermination(
+                    CLOSE_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                log.warn(
+                        "Evaluation executor did not terminate within {} seconds",
+                        CLOSE_TIMEOUT_SECONDS);
             }
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            log.warn("Interrupted while waiting for evaluation executor shutdown");
         }
-        save();
+        synchronized (this) {
+            for (Map<String, Object> job : jobs.values()) {
+                String status = String.valueOf(job.get("status"));
+                if ("queued".equals(status) || "running".equals(status)) {
+                    job.put("status", "failed");
+                    job.put("phase", "interrupted");
+                    job.put("error", "评测任务因服务停止而中断，请重新运行。");
+                    job.put("finished_at", now());
+                }
+            }
+            save();
+        }
     }
 
     private void execute(String jobId, EvalRunRequest request, TenantScopedActorKey actorKey) {

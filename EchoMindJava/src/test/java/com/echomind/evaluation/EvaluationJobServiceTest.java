@@ -25,6 +25,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -130,6 +133,33 @@ class EvaluationJobServiceTest {
         JsonNode persisted = objectMapper.readTree(propertiesPath().toFile());
         assertThat(persisted.get("jobs")).hasSize(1);
         assertThat(persisted.get("jobs").get(0).get("job_id").asText()).isEqualTo("owned-job");
+    }
+
+    @Test
+    void closeWaitsForInterruptedWorkerToFinishBeforeReturning() throws Exception {
+        CountDownLatch started = new CountDownLatch(1);
+        AtomicBoolean workerFinished = new AtomicBoolean();
+        when(evaluator.run(any(), any())).thenAnswer(invocation -> {
+            started.countDown();
+            long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(250);
+            while (System.nanoTime() < deadline) {
+                long remaining = deadline - System.nanoTime();
+                try {
+                    Thread.sleep(Math.max(1, TimeUnit.NANOSECONDS.toMillis(remaining)));
+                } catch (InterruptedException ignored) {
+                    // A production close interrupts first and waits for cleanup.
+                }
+            }
+            workerFinished.set(true);
+            return Map.of("ok", true);
+        });
+
+        service.submit(REQUEST, actor("tenant-a", "user-1"));
+        assertThat(started.await(1, TimeUnit.SECONDS)).isTrue();
+
+        service.close();
+
+        assertThat(workerFinished).isTrue();
     }
 
     @Test

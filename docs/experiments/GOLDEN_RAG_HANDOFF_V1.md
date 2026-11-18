@@ -228,6 +228,28 @@ Fix:
 - Restored LF for those files, verified the semantic diff was `34` and `67`
   added lines respectively, and amended the local unpushed commit.
 
+### 7. CI Deleted Temp Directory While An Evaluation Worker Was Still Finishing
+
+Observed:
+
+- GitHub Actions failed `EvaluationJobServiceTest` with
+  `Failed to delete temp directory`.
+- The same suite usually passed locally, making this timing-sensitive.
+
+Cause:
+
+- `EvaluationJobService.close()` called `shutdownNow()` and immediately
+  returned.
+- A worker interrupted by shutdown could still save its final state while
+  JUnit removed the `@TempDir`.
+
+Fix:
+
+- Shutdown now waits up to five seconds outside the service monitor for the
+  executor to terminate, then obtains the monitor and persists final job state.
+- A regression test uses a worker that deliberately ignores the first
+  interrupt and verifies that `close()` does not return before worker cleanup.
+
 ## Verification
 
 Latest local verification on this machine:
