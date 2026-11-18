@@ -43,13 +43,17 @@ public final class GoldenDatasetLoader {
     }
 
     public GoldenDataset load(String datasetVersion) {
+        return loadWithManifest(datasetVersion).dataset();
+    }
+
+    public LoadedDataset loadWithManifest(String datasetVersion) {
         String version = requireVersion(datasetVersion);
         String root = RESOURCE_ROOT + version + "/";
         GoldenManifest manifest = readJson(root + "manifest.json", GoldenManifest.class);
         String datasetText = readText(root + "dataset.json");
         GoldenDataset dataset = parse(datasetText, GoldenDataset.class);
         validate(datasetVersion, manifest, dataset, datasetText);
-        return dataset;
+        return new LoadedDataset(dataset, manifest);
     }
 
     void validate(
@@ -298,5 +302,8 @@ public final class GoldenDatasetLoader {
 
     static String sha256(String value) {
         return KnowledgeIndexBuilder.sha256(value);
+    }
+
+    public record LoadedDataset(GoldenDataset dataset, GoldenManifest manifest) {
     }
 }
