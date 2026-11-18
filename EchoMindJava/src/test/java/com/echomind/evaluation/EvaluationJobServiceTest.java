@@ -4,6 +4,10 @@ import com.echomind.api.dto.EvalRunRequest;
 import com.echomind.config.EchoMindProperties;
 import com.echomind.saas.api.error.ResourceNotFoundException;
 import com.echomind.saas.evaluation.domain.EvaluationJob;
+import com.echomind.saas.evaluation.golden.GoldenDataset;
+import com.echomind.saas.evaluation.golden.GoldenDatasetException;
+import com.echomind.saas.evaluation.golden.GoldenEvaluationReport;
+import com.echomind.saas.evaluation.golden.GoldenEvaluationService;
 import com.echomind.saas.identity.domain.ActorRole;
 import com.echomind.saas.identity.domain.ActorScope;
 import com.echomind.saas.identity.domain.TenantId;
@@ -11,7 +15,10 @@ import com.echomind.saas.identity.domain.TenantScopedActorKey;
 import com.echomind.saas.identity.domain.UserId;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -21,10 +28,12 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.awaitility.Awaitility;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.timeout;
@@ -38,18 +47,22 @@ class EvaluationJobServiceTest {
     @TempDir
     Path tempDir;
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper = new ObjectMapper()
+            .setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
     private EndToEndEvaluator evaluator;
+    private GoldenEvaluationService goldenEvaluationService;
     private EchoMindProperties properties;
     private EvaluationJobService service;
 
     @BeforeEach
     void setUp() {
         evaluator = mock(EndToEndEvaluator.class);
+        goldenEvaluationService = mock(GoldenEvaluationService.class);
         when(evaluator.run(any(), any())).thenReturn(Map.of("ok", true));
         properties = new EchoMindProperties();
         properties.getEval().setJobsPath(tempDir.resolve("jobs.json").toString());
-        service = new EvaluationJobService(evaluator, objectMapper, properties);
+        service = new EvaluationJobService(
+                evaluator, goldenEvaluationService, objectMapper, properties);
         service.load();
     }
 
@@ -118,6 +131,58 @@ class EvaluationJobServiceTest {
         assertThat(persisted.get("jobs").get(0).get("job_id").asText()).isEqualTo("owned-job");
     }
 
+    @Test
+    void goldenRagJobPersistsReportAndProtectsMarkdownOwnership() throws Exception {
+        ActorScope owner = actor("tenant-a", "user-1");
+        Path markdown = tempDir.resolve("report.md");
+        Files.writeString(markdown, "# Golden report\n");
+        when(goldenEvaluationService.run(
+                eq("rag-support-golden-v1"), anyString()))
+                .thenReturn(goldenReport(markdown.toString()));
+
+        EvaluationJob submitted = service.submitGoldenRag(
+                "rag-support-golden-v1", owner);
+
+        Awaitility.await().atMost(Duration.ofSeconds(2)).untilAsserted(() -> {
+            EvaluationJob loaded = service.get(submitted.jobId(), owner);
+            assertThat(loaded.status()).isEqualTo("succeeded");
+            assertThat(loaded.report())
+                    .containsEntry("dataset_version", "rag-support-golden-v1")
+                    .containsEntry(
+                            "report_download_path",
+                            "/eval/jobs/" + submitted.jobId() + "/report.md");
+            assertThat(loaded.report()).doesNotContainKeys(
+                    "json_path", "markdown_path");
+        });
+        assertThat(service.markdownReport(submitted.jobId(), owner))
+                .isEqualTo("# Golden report\n");
+        assertThatThrownBy(() -> service.markdownReport(
+                submitted.jobId(), actor("tenant-a", "user-2")))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void goldenRagFailureUsesStableErrorCodeWithoutLocalDetails() {
+        ActorScope owner = actor("tenant-a", "user-1");
+        when(goldenEvaluationService.run(
+                eq("missing-dataset"), anyString()))
+                .thenThrow(new GoldenDatasetException(
+                        "GOLDEN_DATASET_NOT_FOUND",
+                        "C:\\secret\\dataset.json"));
+
+        EvaluationJob submitted = service.submitGoldenRag(
+                "missing-dataset", owner);
+
+        Awaitility.await().atMost(Duration.ofSeconds(2)).untilAsserted(() -> {
+            EvaluationJob loaded = service.get(submitted.jobId(), owner);
+            assertThat(loaded.status()).isEqualTo("failed");
+            assertThat(loaded.error())
+                    .isEqualTo("Golden RAG evaluation failed "
+                            + "(GOLDEN_DATASET_NOT_FOUND).");
+            assertThat(loaded.error()).doesNotContain("secret");
+        });
+    }
+
     private Path propertiesPath() {
         return Path.of(properties.getEval().getJobsPath());
     }
@@ -145,5 +210,31 @@ class EvaluationJobServiceTest {
         job.put("progress", 100);
         job.put("created_at", "2026-11-18T00:00:00Z");
         return job;
+    }
+
+    private static GoldenEvaluationReport goldenReport(String markdownPath) {
+        GoldenEvaluationReport.RetrievalMetrics retrieval =
+                new GoldenEvaluationReport.RetrievalMetrics(
+                        1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 2);
+        GoldenEvaluationReport.HandoffMetrics handoff =
+                new GoldenEvaluationReport.HandoffMetrics(
+                        1, 1, 1, 0, 0, 10, 0, 10, 0);
+        return new GoldenEvaluationReport(
+                "job-1",
+                "rag-support-golden-v1",
+                "a".repeat(64),
+                "working-tree",
+                "bge-small-zh-v1.5-onnx-fp32",
+                new GoldenDataset.Provenance("synthetic", false, false, 0),
+                "2026-11-18T00:00:00Z",
+                new GoldenEvaluationReport.Totals(12, 12, 30, 20, 10, 20, 12, 8, 0),
+                Map.of("DEV", retrieval, "HOLDOUT", retrieval, "ALL", retrieval),
+                Map.of("DEV", handoff, "HOLDOUT", handoff, "ALL", handoff),
+                Map.of(),
+                List.of(),
+                List.of(),
+                List.of("Synthetic dataset"),
+                Path.of(markdownPath).resolveSibling("report.json").toString(),
+                markdownPath);
     }
 }
