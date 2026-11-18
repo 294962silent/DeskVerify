@@ -83,7 +83,7 @@ public class TicketApplicationService implements TicketCommands, TicketQueries {
 
     @Override
     @Transactional
-    public Ticket create(CreateTicketCommand command, ActorScope actor) {
+    public TicketCreationResult create(CreateTicketCommand command, ActorScope actor) {
         Objects.requireNonNull(command, "command");
         Objects.requireNonNull(actor, "actor");
         requireCreateAccess(actor, command.customerId());
@@ -100,7 +100,9 @@ public class TicketApplicationService implements TicketCommands, TicketQueries {
                 requestHash,
                 now.plus(IDEMPOTENCY_TTL));
         if (attemptToken.isEmpty()) {
-            return completedReplay(actor.tenantId(), command.idempotencyKey());
+            return new TicketCreationResult(
+                    completedReplay(actor.tenantId(), command.idempotencyKey()),
+                    true);
         }
 
         String ticketIdValue = "ticket-" + UUID.randomUUID();
@@ -152,7 +154,7 @@ public class TicketApplicationService implements TicketCommands, TicketQueries {
                 command.idempotencyKey(),
                 attemptToken.orElseThrow(),
                 writeJson(ticket));
-        return ticket;
+        return new TicketCreationResult(ticket, false);
     }
 
     @Override

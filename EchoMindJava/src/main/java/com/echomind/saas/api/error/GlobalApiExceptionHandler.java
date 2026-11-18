@@ -2,6 +2,8 @@ package com.echomind.saas.api.error;
 
 import com.echomind.saas.identity.application.TenantAccessDeniedException;
 import com.echomind.saas.platform.idempotency.IdempotencyConflictException;
+import com.echomind.saas.ticket.application.IdempotencyInProgressException;
+import com.echomind.saas.ticket.application.TicketConflictException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
@@ -12,6 +14,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
@@ -49,13 +52,33 @@ public final class GlobalApiExceptionHandler {
                 "idempotency conflict", request, false);
     }
 
+    @ExceptionHandler(IdempotencyInProgressException.class)
+    ResponseEntity<ApiErrorResponse> idempotencyInProgress(
+            IdempotencyInProgressException exception,
+            HttpServletRequest request) {
+        logDiagnostic(request, exception);
+        return response(HttpStatus.CONFLICT, ErrorCode.IDEMPOTENCY_IN_PROGRESS,
+                "request is still in progress", request, true);
+    }
+
+    @ExceptionHandler(TicketConflictException.class)
+    ResponseEntity<ApiErrorResponse> ticketConflict(
+            TicketConflictException exception,
+            HttpServletRequest request) {
+        logDiagnostic(request, exception);
+        return response(HttpStatus.CONFLICT, ErrorCode.TICKET_STATE_CONFLICT,
+                "ticket state conflict", request, false);
+    }
+
     @ExceptionHandler({
             MethodArgumentNotValidException.class,
             HttpMessageNotReadableException.class,
+            MissingRequestHeaderException.class,
             MissingServletRequestParameterException.class,
             MethodArgumentTypeMismatchException.class,
             HandlerMethodValidationException.class,
-            ConstraintViolationException.class
+            ConstraintViolationException.class,
+            IllegalArgumentException.class
     })
     ResponseEntity<ApiErrorResponse> validation(
             Exception exception,

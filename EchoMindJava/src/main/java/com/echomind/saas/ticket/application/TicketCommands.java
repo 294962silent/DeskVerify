@@ -4,7 +4,7 @@ import com.echomind.saas.identity.domain.ActorScope;
 import com.echomind.saas.ticket.domain.Ticket;
 
 public interface TicketCommands {
-    Ticket create(CreateTicketCommand command, ActorScope actor);
+    TicketCreationResult create(CreateTicketCommand command, ActorScope actor);
 
     Ticket claim(ClaimTicketCommand command, ActorScope actor);
 

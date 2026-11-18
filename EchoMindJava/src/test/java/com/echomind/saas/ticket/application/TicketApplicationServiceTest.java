@@ -61,8 +61,10 @@ class TicketApplicationServiceTest {
         when(idempotency.tryAcquire(any(), eq("idem-1"), anyString(), any()))
                 .thenReturn(Optional.of("attempt-1"));
 
-        Ticket created = service.create(command, actor);
+        TicketCreationResult creation = service.create(command, actor);
+        Ticket created = creation.ticket();
 
+        assertThat(creation.replayed()).isFalse();
         assertThat(created.status()).isEqualTo(TicketStatus.QUEUED);
         assertThat(created.version()).isZero();
         assertThat(created.priority()).isEqualTo(TicketPriority.HIGH);
@@ -107,9 +109,11 @@ class TicketApplicationServiceTest {
                 .thenReturn(Optional.of(new IdempotencyReplay(
                         write(existing), Instant.parse("2026-11-18T02:10:00Z"))));
 
-        Ticket replayed = service.create(createCommand("customer-a", "idem-1"), actor);
+        TicketCreationResult replay =
+                service.create(createCommand("customer-a", "idem-1"), actor);
 
-        assertThat(replayed).isEqualTo(existing);
+        assertThat(replay.replayed()).isTrue();
+        assertThat(replay.ticket()).isEqualTo(existing);
         verify(repository, never()).insert(any(), any(), any());
         verify(outbox, never()).append(any());
         verify(idempotency, never()).complete(any(), anyString(), anyString(), anyString());
@@ -160,7 +164,8 @@ class TicketApplicationServiceTest {
         when(idempotency.tryAcquire(any(), anyString(), anyString(), any()))
                 .thenReturn(Optional.of("attempt-1"));
 
-        Ticket created = service.create(createCommand("customer-a", "idem-support"), actor);
+        Ticket created =
+                service.create(createCommand("customer-a", "idem-support"), actor).ticket();
 
         assertThat(created.createdByUserId()).isEqualTo("support-1");
         verify(repository).insert(eq(new TenantId("tenant-a")), eq(created), any());

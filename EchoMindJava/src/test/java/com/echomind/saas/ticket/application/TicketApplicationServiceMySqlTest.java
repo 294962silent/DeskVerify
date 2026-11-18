@@ -79,7 +79,9 @@ class TicketApplicationServiceMySqlTest {
     @Test
     void creationCommitsTicketHistoryOutboxAndIdempotencyTogether() {
         Ticket created = inTransaction(() ->
-                service.create(command("idem-create", "Unable to access reports"), customerActor()));
+                service.create(
+                        command("idem-create", "Unable to access reports"),
+                        customerActor()).ticket());
 
         assertThat(created.status()).isEqualTo(TicketStatus.QUEUED);
         assertThat(count("ticket")).isEqualTo(1);
@@ -90,10 +92,13 @@ class TicketApplicationServiceMySqlTest {
                 where tenant_id = 'tenant-a' and idempotency_key = 'idem-create'
                 """, String.class)).isEqualTo("COMPLETED");
 
-        Ticket replay = inTransaction(() ->
-                service.create(command("idem-create", "Unable to access reports"), customerActor()));
+        TicketCreationResult replay = inTransaction(() ->
+                service.create(
+                        command("idem-create", "Unable to access reports"),
+                        customerActor()));
 
-        assertThat(replay).isEqualTo(created);
+        assertThat(replay.replayed()).isTrue();
+        assertThat(replay.ticket()).isEqualTo(created);
         assertThat(count("ticket")).isEqualTo(1);
         assertThat(count("ticket_event")).isEqualTo(2);
         assertThat(count("outbox_event")).isEqualTo(1);
@@ -102,10 +107,14 @@ class TicketApplicationServiceMySqlTest {
     @Test
     void reusingAnIdempotencyKeyWithDifferentContentIsRejected() {
         inTransaction(() ->
-                service.create(command("idem-conflict", "First subject"), customerActor()));
+                service.create(
+                        command("idem-conflict", "First subject"),
+                        customerActor()).ticket());
 
         assertThatThrownBy(() -> inTransaction(() ->
-                service.create(command("idem-conflict", "Different subject"), customerActor())))
+                service.create(
+                        command("idem-conflict", "Different subject"),
+                        customerActor())))
                 .isInstanceOf(IdempotencyConflictException.class);
 
         assertThat(count("ticket")).isEqualTo(1);
@@ -115,7 +124,9 @@ class TicketApplicationServiceMySqlTest {
     @Test
     void fullWorkflowWritesOneImmutableEventAndOneOutboxMessagePerTransition() {
         Ticket queued = inTransaction(() ->
-                service.create(command("idem-flow", "Unable to access reports"), customerActor()));
+                service.create(
+                        command("idem-flow", "Unable to access reports"),
+                        customerActor()).ticket());
         Ticket claimed = inTransaction(() ->
                 service.claim(new ClaimTicketCommand(
                         queued.ticketId().value(), queued.version()), supportActor()));
@@ -178,7 +189,9 @@ class TicketApplicationServiceMySqlTest {
                 objectMapper);
 
         assertThatThrownBy(() -> inTransaction(() ->
-                failingService.create(command("idem-rollback", "Will roll back"), customerActor())))
+                failingService.create(
+                        command("idem-rollback", "Will roll back"),
+                        customerActor())))
                 .hasMessage("outbox unavailable");
 
         assertThat(count("ticket")).isZero();
