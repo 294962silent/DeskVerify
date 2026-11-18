@@ -1,13 +1,20 @@
 package com.echomind.saas.rag;
 
 import com.echomind.agent.AgentOrchestrator;
+import com.echomind.agent.AgentRequest;
+import com.echomind.agent.AgentType;
 import com.echomind.agent.AnswerVerifier;
+import com.echomind.agent.OrchestratorResult;
 import com.echomind.evaluation.EndToEndEvaluator;
 import com.echomind.evaluation.EvaluationJobService;
 import com.echomind.intent.IntentRecognizer;
+import com.echomind.intent.IntentCategory;
+import com.echomind.intent.IntentResult;
+import com.echomind.intent.UrgencyLevel;
 import com.echomind.knowledge.KnowledgeBaseService;
 import com.echomind.llm.LlmGateway;
 import com.echomind.memory.MemoryManager;
+import com.echomind.memory.MemoryContext;
 import com.echomind.monitor.PerformanceMonitor;
 import com.echomind.saas.testsupport.MySqlTestContainers;
 import com.echomind.skill.SkillManager;
@@ -24,6 +31,7 @@ import java.time.Instant;
 import java.util.Base64;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -40,6 +48,10 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -206,6 +218,54 @@ class KnowledgeRagEndToEndTest {
                         .value("企业版续费与席位"))
                 .andExpect(jsonPath("$.citations[0].heading_path")
                         .value("续费规则"));
+
+        when(memoryManager.getContext(anyString(), anyString(), anyString()))
+                .thenReturn(new MemoryContext(List.of(), List.of(), Map.of(), ""));
+        when(intentRecognizer.recognize(anyString(), anyList())).thenReturn(
+                new IntentResult(
+                        IntentCategory.QUERY,
+                        0.95,
+                        UrgencyLevel.LOW,
+                        "knowledge",
+                        Map.of(),
+                        "test",
+                        1,
+                        Map.of()));
+        when(orchestrator.run(any(AgentRequest.class), anyList(), any()))
+                .thenReturn(new OrchestratorResult(
+                        "chat-rag",
+                        "企业版续费后五分钟内更新席位。",
+                        AgentType.GENERAL,
+                        IntentCategory.QUERY,
+                        false,
+                        12,
+                        List.of(AgentType.GENERAL),
+                        AgentType.GENERAL,
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        "grounded knowledge",
+                        0.9));
+        when(answerVerifier.verify(anyString(), anyString(), anyString()))
+                .thenReturn(new AnswerVerifier.VerificationResult(
+                        true, true, false, "grounded"));
+
+        mvc.perform(post("/chat")
+                        .header("Authorization", "Bearer " + customerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "message": "企业版续费后席位多久生效"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.knowledge_used").value(true))
+                .andExpect(jsonPath("$.citations[0].citation_id").value("citation-1"))
+                .andExpect(jsonPath("$.citations[0].document_title")
+                        .value("企业版续费与席位"))
+                .andExpect(jsonPath("$.citations[0].heading_path")
+                        .value("续费规则"))
+                .andExpect(jsonPath("$.retrieval_degraded_modes").isEmpty());
 
         assertThat(jdbc.queryForObject(
                 "select count(*) from knowledge_chunk where tenant_id = 'tenant-a'",

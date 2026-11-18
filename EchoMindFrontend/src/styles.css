@@ -455,6 +455,41 @@ a { color: inherit; }
 .message-meta small { font-weight: 500; color: var(--muted); }
 .message p { margin: 8px 0 0; line-height: 1.7; white-space: pre-wrap; color: #eef1fb; }
 
+.message-evidence {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.message-degraded {
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: rgba(243, 185, 75, 0.12);
+  color: #ffda91;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.message-citation {
+  padding: 10px 11px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.message-citation > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.message-citation strong { color: #dfe4ff; font-size: 12px; }
+.message-citation small { color: var(--muted); font-size: 10px; text-align: right; }
+.message-citation p { margin-top: 5px; color: var(--text-soft); font-size: 12px; }
+
 .message-trace {
   margin-top: 12px;
   padding-top: 12px;

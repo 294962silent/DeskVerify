@@ -55,6 +55,28 @@
                 <small v-if="item.meta">{{ item.meta }}</small>
               </div>
               <p>{{ item.content }}</p>
+              <div
+                v-if="item.citations?.length || item.degradedModes?.length"
+                class="message-evidence"
+              >
+                <div v-if="item.degradedModes?.length" class="message-degraded">
+                  检索降级：{{ item.degradedModes.join(' · ') }}
+                </div>
+                <article
+                  v-for="citation in item.citations"
+                  :key="citation.citation_id"
+                  class="message-citation"
+                >
+                  <div>
+                    <strong>[{{ citation.citation_id }}] {{ citation.document_title }}</strong>
+                    <small>
+                      v{{ citation.version_number }}
+                      · {{ citation.section_title || citation.heading_path || '正文' }}
+                    </small>
+                  </div>
+                  <p>{{ citation.excerpt }}</p>
+                </article>
+              </div>
               <div v-if="item.trace" class="message-trace">
                 <div class="trace-head">
                   <span>工具调用</span>
@@ -176,6 +198,8 @@
                   <div><dt>意图</dt><dd>{{ lastResponse.intent || '-' }}</dd></div>
                   <div><dt>置信度</dt><dd>{{ formatPercent(lastResponse.routingConfidence) }}</dd></div>
                   <div><dt>知识库</dt><dd :class="lastResponse.knowledgeUsed ? 'success' : 'muted'">{{ lastResponse.knowledgeUsed ? '已使用' : '未使用' }}</dd></div>
+                  <div v-if="lastResponse.citations?.length"><dt>引用</dt><dd>{{ lastResponse.citations.length }} 条</dd></div>
+                  <div v-if="lastResponse.retrievalDegradedModes?.length"><dt>检索降级</dt><dd class="danger">{{ lastResponse.retrievalDegradedModes.join(' · ') }}</dd></div>
                   <div><dt>转人工</dt><dd :class="lastResponse.escalated ? 'danger' : 'muted'">{{ lastResponse.escalated ? '是' : '否' }}</dd></div>
                 </dl>
                 <p v-if="lastResponse.routingReason" class="routing-reason">{{ lastResponse.routingReason }}</p>
@@ -563,8 +587,16 @@ async function sendMessage() {
     }
     lastResponse.value = response
     lastTrace.value = await loadToolTrace(response.requestId)
-    const meta = [response.intent, response.primaryAgent || response.agentType, response.knowledgeUsed ? 'RAG' : '', response.escalated ? '转人工' : ''].filter(Boolean).join(' · ')
-    messages.value.push({ id: createMessageId(), role: 'assistant', content: response.response, meta, trace: lastTrace.value?.trace || null })
+    const meta = [response.intent, response.primaryAgent || response.agentType, response.knowledgeUsed ? 'RAG' : '', response.retrievalDegradedModes?.length ? '检索降级' : '', response.escalated ? '转人工' : ''].filter(Boolean).join(' · ')
+    messages.value.push({
+      id: createMessageId(),
+      role: 'assistant',
+      content: response.response,
+      meta,
+      citations: response.citations || [],
+      degradedModes: response.retrievalDegradedModes || [],
+      trace: lastTrace.value?.trace || null
+    })
     await loadMonitor()
   } catch (error) {
     messages.value.push({ id: createMessageId(), role: 'assistant', content: error.message, meta: '请求失败' })

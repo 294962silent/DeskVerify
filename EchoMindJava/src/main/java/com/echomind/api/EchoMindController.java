@@ -6,6 +6,7 @@ import com.echomind.agent.AgentType;
 import com.echomind.agent.AnswerVerifier;
 import com.echomind.agent.OrchestratorResult;
 import com.echomind.api.dto.BatchDocInput;
+import com.echomind.api.dto.ChatCitationResponse;
 import com.echomind.api.dto.ChatRequest;
 import com.echomind.api.dto.ChatResponse;
 import com.echomind.api.dto.EvalRunRequest;
@@ -24,6 +25,10 @@ import com.echomind.saas.api.error.ResourceNotFoundException;
 import com.echomind.saas.architecture.LegacySaaSBridge;
 import com.echomind.saas.identity.domain.ActorScope;
 import com.echomind.saas.identity.domain.TenantScopedActorKey;
+import com.echomind.saas.rag.application.KnowledgeRetrieval;
+import com.echomind.saas.rag.domain.KnowledgeCitation;
+import com.echomind.saas.rag.domain.KnowledgeRetrievalResult;
+import com.echomind.saas.rag.domain.RetrievalHit;
 import com.echomind.skill.SkillManager;
 import com.echomind.tool.KnowledgeToolManager;
 import com.echomind.tool.ToolResult;
@@ -62,6 +67,7 @@ public class EchoMindController {
     private final IntentRecognizer intentRecognizer;
     private final MemoryManager memoryManager;
     private final KnowledgeToolManager knowledgeToolManager;
+    private final KnowledgeRetrieval knowledgeRetrieval;
     private final KnowledgeBaseService knowledgeBaseService;
     private final AnswerVerifier answerVerifier;
     private final PerformanceMonitor performanceMonitor;
@@ -76,6 +82,7 @@ public class EchoMindController {
             IntentRecognizer intentRecognizer,
             MemoryManager memoryManager,
             KnowledgeToolManager knowledgeToolManager,
+            KnowledgeRetrieval knowledgeRetrieval,
             KnowledgeBaseService knowledgeBaseService,
             AnswerVerifier answerVerifier,
             PerformanceMonitor performanceMonitor,
@@ -89,6 +96,7 @@ public class EchoMindController {
         this.intentRecognizer = intentRecognizer;
         this.memoryManager = memoryManager;
         this.knowledgeToolManager = knowledgeToolManager;
+        this.knowledgeRetrieval = knowledgeRetrieval;
         this.knowledgeBaseService = knowledgeBaseService;
         this.answerVerifier = answerVerifier;
         this.performanceMonitor = performanceMonitor;
@@ -125,21 +133,23 @@ public class EchoMindController {
         IntentResult intentResult = intentRecognizer.recognize(request.message(), history);
         boolean useKnowledge = shouldUseKnowledge(intentResult.intent());
         ToolCallTrace knowledgeTrace = null;
-        ToolResult<List<SearchResult>> knowledge = useKnowledge
-                ? knowledgeToolManager.searchWithRewrite(request.message(), 3)
-                : new ToolResult<>(true, List.of(), "knowledge_search", null, false, 0, false);
+        KnowledgeRetrievalResult knowledge = useKnowledge
+                ? retrieveKnowledge(request.message(), actorScope)
+                : new KnowledgeRetrievalResult(
+                        request.message(), List.of(), List.of(), List.of(), 0);
         if (useKnowledge) {
+            boolean failed = knowledge.degradedModes().contains("retrieval_failed");
             knowledgeTrace = new ToolCallTrace(
-                    knowledge.toolName() == null || knowledge.toolName().isBlank() ? "knowledge_search" : knowledge.toolName(),
-                    knowledge.success(),
-                    !knowledge.success() || knowledge.error() != null,
-                    knowledge.cached(),
-                    knowledge.reranked(),
+                    "versioned_knowledge_search",
+                    !failed,
+                    !knowledge.degradedModes().isEmpty(),
+                    false,
+                    true,
                     knowledge.latencyMs(),
-                    knowledge.error() == null ? "" : knowledge.error()
+                    String.join(",", knowledge.degradedModes())
             );
         }
-        String knowledgeText = buildKnowledgeContext(knowledge.data());
+        String knowledgeText = buildKnowledgeContext(knowledge);
         String fullContext = join(memoryText, knowledgeText);
         OrchestratorResult result = orchestrator.run(
                 AgentRequest.of(request.message(), actorKey, conversationId, fullContext, history, intentResult, requestId),
@@ -165,12 +175,16 @@ public class EchoMindController {
                 result.routingConfidence(),
                 escalated,
                 result.latencyMs(),
-                knowledge.success() && knowledge.data() != null && !knowledge.data().isEmpty(),
+                !knowledge.hits().isEmpty(),
                 verification.pass(),
                 verification.grounded(),
                 intentResult.entities(),
                 round(intentResult.confidence(), 4),
-                intentResult.sourceScores()
+                intentResult.sourceScores(),
+                knowledge.citations().stream()
+                        .map(this::chatCitation)
+                        .toList(),
+                knowledge.degradedModes()
         );
     }
 
@@ -326,17 +340,66 @@ public class EchoMindController {
         };
     }
 
-    private String buildKnowledgeContext(List<SearchResult> results) {
-        if (results == null || results.isEmpty()) {
+    private KnowledgeRetrievalResult retrieveKnowledge(
+            String query, ActorScope actorScope) {
+        try {
+            return knowledgeRetrieval.search(query, 4, actorScope);
+        } catch (RuntimeException exception) {
+            return new KnowledgeRetrievalResult(
+                    query,
+                    List.of(),
+                    List.of(),
+                    List.of("retrieval_failed"),
+                    0);
+        }
+    }
+
+    private ChatCitationResponse chatCitation(KnowledgeCitation citation) {
+        return new ChatCitationResponse(
+                citation.citationId(),
+                citation.chunkId(),
+                citation.documentId(),
+                citation.documentTitle(),
+                citation.versionNumber(),
+                citation.pageNumber(),
+                citation.sectionTitle(),
+                citation.headingPath(),
+                citation.excerpt(),
+                citation.charStart(),
+                citation.charEnd(),
+                citation.score());
+    }
+
+    private String buildKnowledgeContext(KnowledgeRetrievalResult result) {
+        if (result == null || result.hits().isEmpty()) {
             return "";
         }
         List<String> parts = new ArrayList<>();
-        parts.add("[知识库检索结果]");
-        for (int i = 0; i < results.size(); i++) {
-            SearchResult item = results.get(i);
-            parts.add((i + 1) + ". 标题: " + item.title() + "\n   相关度: " + item.score() + "\n   内容: " + item.content());
+        parts.add("[版本化知识库检索结果]");
+        for (int index = 0; index < result.hits().size(); index++) {
+            RetrievalHit hit = result.hits().get(index);
+            KnowledgeCitation citation = index < result.citations().size()
+                    ? result.citations().get(index)
+                    : null;
+            String citationId = citation == null
+                    ? "C" + (index + 1)
+                    : citation.citationId();
+            parts.add("[" + citationId + "] 文档: "
+                    + hit.chunk().documentTitle()
+                    + " v" + hit.chunk().versionNumber()
+                    + "\n   章节: "
+                    + (hit.chunk().headingPath() == null
+                            ? "未标注"
+                            : hit.chunk().headingPath())
+                    + "\n   字符范围: " + hit.chunk().charStart()
+                    + "-" + hit.chunk().charEnd()
+                    + "\n   内容: " + hit.chunk().content());
         }
-        parts.add("请优先依据以上知识库内容回答；如果知识库内容不足，再结合通用客服能力说明。");
+        if (!result.degradedModes().isEmpty()) {
+            parts.add("[检索降级: " + String.join(",", result.degradedModes()) + "]");
+        }
+        parts.add("请优先依据以上知识库内容回答。引用具体事实时使用对应的 [citation-id]；"
+                + "如果检索降级或证据不足，请明确说明不确定性。");
         return String.join("\n", parts);
     }
 

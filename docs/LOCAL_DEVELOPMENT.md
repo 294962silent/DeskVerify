@@ -164,6 +164,13 @@ GET  /api/v1/knowledge/stats
 
 Citation 包含 chunk ID、document ID、标题、版本、section/heading path、字符范围、摘录和分数。检索与发布 E2E 使用真实 Spring context、JWT 和 MySQL 8.4。
 
+`POST /chat` 已切换到同一版本化 RAG 链。聊天响应新增：
+
+- `citations`：与回答上下文对应的结构化引用。
+- `retrieval_degraded_modes`：`lexical_unavailable`、`vector_unavailable` 或 `retrieval_failed`。
+
+引用 ID 会注入 Agent context，前端在回答下方展示引用标题、版本、章节和摘录。单路检索降级时回答继续生成但明确标记；检索服务整体异常时使用 `retrieval_failed`，不会把空证据伪装成正常检索。
+
 ## Frontend
 
 ```powershell

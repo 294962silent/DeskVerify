@@ -27,6 +27,7 @@ import com.echomind.saas.identity.domain.ActorScope;
 import com.echomind.saas.identity.domain.TenantScopedActorKey;
 import com.echomind.saas.identity.domain.UserId;
 import com.echomind.saas.identity.security.SaasSecurityConfiguration;
+import com.echomind.saas.rag.application.KnowledgeRetrieval;
 import com.echomind.skill.SkillManager;
 import com.echomind.tool.KnowledgeToolManager;
 import com.nimbusds.jose.JWSAlgorithm;
@@ -102,6 +103,9 @@ class AuthenticatedActorBoundaryTest {
 
     @MockitoBean
     private KnowledgeToolManager knowledgeToolManager;
+
+    @MockitoBean
+    private KnowledgeRetrieval knowledgeRetrieval;
 
     @MockitoBean
     private KnowledgeBaseService knowledgeBaseService;

@@ -1,4 +1,5 @@
 import { authorizedFetch } from './auth.js'
+import { normalizeChatRagFields } from './rag.js'
 
 export class BackendRequestError extends Error {
   constructor(response, data) {
@@ -135,6 +136,7 @@ function buildChatPayload(type, settings, message) {
 }
 
 function normalizeChatResponse(type, raw) {
+  const rag = normalizeChatRagFields(raw)
   return {
     backend: type,
     conversationId: raw.conversation_id || raw.conversationId || raw.conv_id || '',
@@ -154,6 +156,8 @@ function normalizeChatResponse(type, raw) {
     escalated: Boolean(raw.escalated),
     latencyMs: Number(raw.latency_ms ?? raw.latencyMs ?? 0),
     knowledgeUsed: Boolean(raw.knowledge_used ?? raw.knowledgeUsed),
+    citations: rag.citations,
+    retrievalDegradedModes: rag.retrievalDegradedModes,
     verified: raw.verified,
     grounded: raw.grounded,
     raw

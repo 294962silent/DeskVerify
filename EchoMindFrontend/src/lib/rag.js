@@ -70,6 +70,41 @@ export function canManageKnowledge(roles) {
     .has('TENANT_ADMIN')
 }
 
+export function normalizeChatRagFields(raw) {
+  return {
+    citations: Array.isArray(raw?.citations)
+      ? raw.citations.map((citation) => {
+          const citationId = citation.citation_id || citation.citationId || ''
+          const documentTitle = citation.document_title || citation.documentTitle || ''
+          const versionNumber = Number(citation.version_number ?? citation.versionNumber ?? 0)
+          const sectionTitle = citation.section_title || citation.sectionTitle || ''
+          const headingPath = citation.heading_path || citation.headingPath || ''
+          const charStart = Number(citation.char_start ?? citation.charStart ?? 0)
+          const charEnd = Number(citation.char_end ?? citation.charEnd ?? 0)
+          return {
+            ...citation,
+            citation_id: citationId,
+            citationId,
+            document_title: documentTitle,
+            documentTitle,
+            version_number: versionNumber,
+            versionNumber,
+            section_title: sectionTitle,
+            sectionTitle,
+            heading_path: headingPath,
+            headingPath,
+            char_start: charStart,
+            charStart,
+            char_end: charEnd,
+            charEnd
+          }
+        })
+      : [],
+    retrievalDegradedModes:
+      raw?.retrieval_degraded_modes || raw?.retrievalDegradedModes || []
+  }
+}
+
 function normalizeHit(hit) {
   return {
     ...hit,

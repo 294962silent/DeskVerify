@@ -55,8 +55,8 @@ and structured citations without changing the existing Ticket workflow.
 
 ## Verification
 
-- Backend full suite: 221 tests, 0 failures/errors/skips.
+- Backend full suite: 223 tests, 0 failures/errors/skips.
 - Live MySQL 8.4 migration V1-V10 and knowledge E2E passed.
-- Frontend: 16 tests passed; production build succeeded.
+- Frontend: 17 tests passed; production build succeeded.
 - The default embedding adapter is a deterministic local hashing fallback. A real
   `bge-small-zh-v1.5` ONNX adapter is not included and must not be claimed as active.

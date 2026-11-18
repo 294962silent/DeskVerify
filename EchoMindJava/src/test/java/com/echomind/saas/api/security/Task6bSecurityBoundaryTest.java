@@ -24,6 +24,7 @@ import com.echomind.saas.identity.application.ActorScopeResolver;
 import com.echomind.saas.identity.domain.ActorRole;
 import com.echomind.saas.identity.domain.ActorScope;
 import com.echomind.saas.identity.security.SaasSecurityConfiguration;
+import com.echomind.saas.rag.application.KnowledgeRetrieval;
 import com.echomind.skill.SkillManager;
 import com.echomind.tool.KnowledgeToolManager;
 import com.echomind.trace.RequestToolTrace;
@@ -108,6 +109,9 @@ class Task6bSecurityBoundaryTest {
 
     @MockitoBean
     private KnowledgeToolManager knowledgeToolManager;
+
+    @MockitoBean
+    private KnowledgeRetrieval knowledgeRetrieval;
 
     @MockitoBean
     private KnowledgeBaseService knowledgeBaseService;

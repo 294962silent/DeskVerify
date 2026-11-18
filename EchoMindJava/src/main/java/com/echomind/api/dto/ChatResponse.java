@@ -47,6 +47,10 @@ public record ChatResponse(
         @Schema(description = "意图识别置信度")
         double intentConfidence,
         @Schema(description = "意图识别来源分数")
-        Map<String, Double> intentSourceScores
+        Map<String, Double> intentSourceScores,
+        @Schema(description = "版本化 RAG 引用链")
+        List<ChatCitationResponse> citations,
+        @Schema(description = "检索降级模式")
+        List<String> retrievalDegradedModes
 ) {
 }
