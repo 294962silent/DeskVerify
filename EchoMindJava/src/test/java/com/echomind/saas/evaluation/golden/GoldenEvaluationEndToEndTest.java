@@ -72,10 +72,19 @@ class GoldenEvaluationEndToEndTest {
                         repository, embeddings, new HeuristicReranker()));
         HandoffEvaluator handoffEvaluator =
                 new HandoffEvaluator(new HandoffPolicy());
+        GoldenEvaluationBaselineLoader baselineLoader =
+                new GoldenEvaluationBaselineLoader(objectMapper);
+        GoldenEvaluationGateEvaluator gateEvaluator =
+                new GoldenEvaluationGateEvaluator(baselineLoader, properties);
         GoldenEvaluationReportWriter writer =
                 new GoldenEvaluationReportWriter(objectMapper, properties);
         service = new GoldenEvaluationService(
-                loader, importer, ragEvaluator, handoffEvaluator, writer);
+                loader,
+                importer,
+                ragEvaluator,
+                handoffEvaluator,
+                gateEvaluator,
+                writer);
     }
 
     @AfterEach
@@ -95,9 +104,12 @@ class GoldenEvaluationEndToEndTest {
         assertThat(report.retrievalMetrics()).containsKeys("DEV", "HOLDOUT", "ALL");
         assertThat(report.handoffMetrics().get("ALL").accuracy()).isEqualTo(1.0);
         assertThat(report.retrievalMetrics().get("ALL").aclViolations()).isZero();
+        assertThat(report.gate().passed()).isTrue();
         assertThat(Files.readString(Path.of(report.markdownPath())))
                 .contains("Dataset: `rag-support-golden-v1`")
-                .contains("External LLM tokens: `0`");
+                .contains("External LLM tokens: `0`")
+                .contains("## Release Gate")
+                .contains("Status: `PASSED`");
 
         Integer documents = jdbc.queryForObject("""
                 select count(*)

@@ -35,6 +35,8 @@ class GoldenEvaluationReportWriterTest {
         assertThat(Files.readString(Path.of(paths.markdownPath())))
                 .contains("Dataset: `rag-support-golden-v1`")
                 .contains("External LLM tokens: `0`")
+                .contains("## Release Gate")
+                .contains("Status: `PASSED`")
                 .contains("Synthetic dataset");
     }
 
@@ -54,6 +56,17 @@ class GoldenEvaluationReportWriterTest {
                 new GoldenDataset.Provenance("synthetic", false, false, 0),
                 "2026-11-18T00:00:00Z",
                 new GoldenEvaluationReport.Totals(12, 12, 30, 20, 10, 20, 12, 8, 0),
+                new GoldenEvaluationGate(
+                        true,
+                        List.of(new GoldenEvaluationGate.GateCheck(
+                                "retrieval.DEV.recall_at5",
+                                "DEV",
+                                true,
+                                true,
+                                ">= 0.9800",
+                                "1.0000")),
+                        new GoldenEvaluationGate.Thresholds(
+                                0.02, 0, 0.0, 0.95, 0.10, 0.10, 2000)),
                 Map.of("DEV", retrieval, "HOLDOUT", retrieval, "ALL", retrieval),
                 Map.of("DEV", handoff, "HOLDOUT", handoff, "ALL", handoff),
                 Map.of(),

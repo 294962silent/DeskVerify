@@ -17,6 +17,8 @@ class GoldenEvaluationServiceTest {
         GoldenKnowledgeImporter importer = mock(GoldenKnowledgeImporter.class);
         GoldenRagEvaluator ragEvaluator = mock(GoldenRagEvaluator.class);
         HandoffEvaluator handoffEvaluator = mock(HandoffEvaluator.class);
+        GoldenEvaluationGateEvaluator gateEvaluator =
+                mock(GoldenEvaluationGateEvaluator.class);
         GoldenEvaluationReportWriter writer =
                 mock(GoldenEvaluationReportWriter.class);
         GoldenDataset dataset = fixtureDataset();
@@ -54,11 +56,23 @@ class GoldenEvaluationServiceTest {
                                 "ALL", handoffMetrics),
                         List.of(),
                         Map.of()));
+        GoldenEvaluationGate gate = gate();
+        when(gateEvaluator.evaluate(
+                "rag-support-golden-v1",
+                "a".repeat(64),
+                Map.of("DEV", retrievalMetrics,
+                        "HOLDOUT", retrievalMetrics,
+                        "ALL", retrievalMetrics),
+                Map.of("DEV", handoffMetrics,
+                        "HOLDOUT", handoffMetrics,
+                        "ALL", handoffMetrics)))
+                .thenReturn(gate);
         when(writer.write(org.mockito.ArgumentMatchers.any()))
                 .thenReturn(new GoldenEvaluationReportWriter.WrittenPaths(
                         "report.json", "report.md"));
         GoldenEvaluationService service = new GoldenEvaluationService(
-                loader, importer, ragEvaluator, handoffEvaluator, writer);
+                loader, importer, ragEvaluator, handoffEvaluator,
+                gateEvaluator, writer);
 
         GoldenEvaluationReport report = service.run(
                 "rag-support-golden-v1", "job-1");
@@ -66,8 +80,23 @@ class GoldenEvaluationServiceTest {
         assertThat(report.datasetSha256()).isEqualTo("a".repeat(64));
         assertThat(report.jsonPath()).isEqualTo("report.json");
         assertThat(report.markdownPath()).isEqualTo("report.md");
+        assertThat(report.gate()).isSameAs(gate);
         assertThat(report.totals().externalLlmTokens()).isZero();
         verify(importer).ensureImported(dataset);
+    }
+
+    private static GoldenEvaluationGate gate() {
+        return new GoldenEvaluationGate(
+                true,
+                List.of(new GoldenEvaluationGate.GateCheck(
+                        "retrieval.DEV.recall_at5",
+                        "DEV",
+                        true,
+                        true,
+                        ">= 0.9800",
+                        "1.0000")),
+                new GoldenEvaluationGate.Thresholds(
+                        0.02, 0, 0.0, 0.95, 0.10, 0.10, 2000));
     }
 
     private static GoldenDataset fixtureDataset() {

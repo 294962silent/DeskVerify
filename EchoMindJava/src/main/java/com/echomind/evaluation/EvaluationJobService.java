@@ -277,12 +277,21 @@ public class EvaluationJobService {
                     "report_download_path",
                     "/eval/jobs/" + jobId + "/report.md");
             synchronized (this) {
-                job.put("status", "succeeded");
-                job.put("phase", "completed");
                 job.put("progress", 100);
                 job.put("report", reportMap);
                 job.put("report_markdown_path", report.markdownPath());
                 job.put("finished_at", now());
+                if (report.gate().passed()) {
+                    job.put("status", "succeeded");
+                    job.put("phase", "completed");
+                } else {
+                    job.put("status", "failed");
+                    job.put("phase", "gate_failed");
+                    job.put(
+                            "error",
+                            "Golden RAG evaluation failed "
+                                    + "(GOLDEN_EVALUATION_GATE_FAILED).");
+                }
                 save();
             }
         } catch (GoldenDatasetException exception) {

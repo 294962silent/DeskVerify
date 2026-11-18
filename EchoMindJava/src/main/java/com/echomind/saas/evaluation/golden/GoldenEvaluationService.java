@@ -18,6 +18,7 @@ public final class GoldenEvaluationService {
     private final GoldenKnowledgeImporter importer;
     private final GoldenRagEvaluator ragEvaluator;
     private final HandoffEvaluator handoffEvaluator;
+    private final GoldenEvaluationGateEvaluator gateEvaluator;
     private final GoldenEvaluationReportWriter reportWriter;
 
     public GoldenEvaluationService(
@@ -25,12 +26,14 @@ public final class GoldenEvaluationService {
             GoldenKnowledgeImporter importer,
             GoldenRagEvaluator ragEvaluator,
             HandoffEvaluator handoffEvaluator,
+            GoldenEvaluationGateEvaluator gateEvaluator,
             GoldenEvaluationReportWriter reportWriter) {
         this.loader = Objects.requireNonNull(loader, "loader");
         this.importer = Objects.requireNonNull(importer, "importer");
         this.ragEvaluator = Objects.requireNonNull(ragEvaluator, "ragEvaluator");
         this.handoffEvaluator = Objects.requireNonNull(
                 handoffEvaluator, "handoffEvaluator");
+        this.gateEvaluator = Objects.requireNonNull(gateEvaluator, "gateEvaluator");
         this.reportWriter = Objects.requireNonNull(reportWriter, "reportWriter");
     }
 
@@ -41,6 +44,11 @@ public final class GoldenEvaluationService {
         GoldenRagEvaluator.Outcome retrieval = ragEvaluator.evaluate(dataset);
         HandoffEvaluator.Outcome handoff = handoffEvaluator.evaluate(
                 dataset.handoffCases());
+        GoldenEvaluationGate gate = gateEvaluator.evaluate(
+                dataset.datasetVersion(),
+                loaded.manifest().datasetFileSha256(),
+                retrieval.metrics(),
+                handoff.metrics());
         GoldenEvaluationReport report = new GoldenEvaluationReport(
                 jobId,
                 dataset.datasetVersion(),
@@ -61,6 +69,7 @@ public final class GoldenEvaluationService {
                         countSplit(dataset.handoffCases(), GoldenDataset.Split.DEV),
                         countSplit(dataset.handoffCases(), GoldenDataset.Split.HOLDOUT),
                         dataset.provenance().externalLlmTokens()),
+                gate,
                 retrieval.metrics(),
                 handoff.metrics(),
                 handoff.reasonMetrics(),

@@ -8,6 +8,7 @@ import com.echomind.saas.evaluation.golden.GoldenDataset;
 import com.echomind.saas.evaluation.golden.GoldenDatasetException;
 import com.echomind.saas.evaluation.golden.GoldenEvaluationReport;
 import com.echomind.saas.evaluation.golden.GoldenEvaluationService;
+import com.echomind.saas.evaluation.golden.GoldenEvaluationGate;
 import com.echomind.saas.identity.domain.ActorRole;
 import com.echomind.saas.identity.domain.ActorScope;
 import com.echomind.saas.identity.domain.TenantId;
@@ -183,6 +184,32 @@ class EvaluationJobServiceTest {
         });
     }
 
+    @Test
+    void goldenRagJobFailsButKeepsReportWhenGateFails() throws Exception {
+        ActorScope owner = actor("tenant-a", "user-1");
+        Path markdown = tempDir.resolve("gate-report.md");
+        Files.writeString(markdown, "# Failed gate\n");
+        when(goldenEvaluationService.run(
+                eq("rag-support-golden-v1"), anyString()))
+                .thenReturn(goldenReport(markdown.toString(), failedGate()));
+
+        EvaluationJob submitted = service.submitGoldenRag(
+                "rag-support-golden-v1", owner);
+
+        Awaitility.await().atMost(Duration.ofSeconds(2)).untilAsserted(() -> {
+            EvaluationJob loaded = service.get(submitted.jobId(), owner);
+            assertThat(loaded.status()).isEqualTo("failed");
+            assertThat(loaded.error()).isEqualTo(
+                    "Golden RAG evaluation failed "
+                            + "(GOLDEN_EVALUATION_GATE_FAILED).");
+            assertThat(loaded.report())
+                    .extracting("gate.passed")
+                    .isEqualTo(false);
+        });
+        assertThat(service.markdownReport(submitted.jobId(), owner))
+                .isEqualTo("# Failed gate\n");
+    }
+
     private Path propertiesPath() {
         return Path.of(properties.getEval().getJobsPath());
     }
@@ -213,6 +240,12 @@ class EvaluationJobServiceTest {
     }
 
     private static GoldenEvaluationReport goldenReport(String markdownPath) {
+        return goldenReport(markdownPath, passingGate());
+    }
+
+    private static GoldenEvaluationReport goldenReport(
+            String markdownPath,
+            GoldenEvaluationGate gate) {
         GoldenEvaluationReport.RetrievalMetrics retrieval =
                 new GoldenEvaluationReport.RetrievalMetrics(
                         1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 2);
@@ -228,6 +261,7 @@ class EvaluationJobServiceTest {
                 new GoldenDataset.Provenance("synthetic", false, false, 0),
                 "2026-11-18T00:00:00Z",
                 new GoldenEvaluationReport.Totals(12, 12, 30, 20, 10, 20, 12, 8, 0),
+                gate,
                 Map.of("DEV", retrieval, "HOLDOUT", retrieval, "ALL", retrieval),
                 Map.of("DEV", handoff, "HOLDOUT", handoff, "ALL", handoff),
                 Map.of(),
@@ -236,5 +270,36 @@ class EvaluationJobServiceTest {
                 List.of("Synthetic dataset"),
                 Path.of(markdownPath).resolveSibling("report.json").toString(),
                 markdownPath);
+    }
+
+    private static GoldenEvaluationGate passingGate() {
+        return new GoldenEvaluationGate(
+                true,
+                List.of(new GoldenEvaluationGate.GateCheck(
+                        "retrieval.ALL.recall_at5",
+                        "ALL",
+                        true,
+                        true,
+                        ">= 0.9800",
+                        "1.0000")),
+                gateThresholds());
+    }
+
+    private static GoldenEvaluationGate failedGate() {
+        return new GoldenEvaluationGate(
+                true,
+                List.of(new GoldenEvaluationGate.GateCheck(
+                        "retrieval.DEV.recall_at5",
+                        "DEV",
+                        true,
+                        false,
+                        ">= 0.9800",
+                        "0.9500")),
+                gateThresholds());
+    }
+
+    private static GoldenEvaluationGate.Thresholds gateThresholds() {
+        return new GoldenEvaluationGate.Thresholds(
+                0.02, 0, 0.0, 0.95, 0.10, 0.10, 2000);
     }
 }

@@ -66,6 +66,8 @@ public final class GoldenEvaluationReportWriter {
         markdown.append("- Statistically representative: `")
                 .append(report.provenance().statisticallyRepresentative()).append("`\n\n");
 
+        appendReleaseGate(markdown, report.gate());
+
         markdown.append("## Retrieval Metrics\n\n");
         markdown.append("| Split | Recall@1 | Recall@3 | Recall@5 | MRR@5 | "
                 + "Citation hit | ACL violations | Degraded | P95 ms |\n");
@@ -93,6 +95,33 @@ public final class GoldenEvaluationReportWriter {
         report.limitations().forEach(limitation ->
                 markdown.append("- ").append(limitation).append("\n"));
         return markdown.toString();
+    }
+
+    private static void appendReleaseGate(
+            StringBuilder markdown,
+            GoldenEvaluationGate gate) {
+        markdown.append("## Release Gate\n\n");
+        markdown.append("- Status: `")
+                .append(gate.passed() ? "PASSED" : "FAILED")
+                .append("`\n");
+        markdown.append("- Blocking failures: `")
+                .append(gate.blockingFailureCount())
+                .append("`\n");
+        markdown.append("- Advisory warnings: `")
+                .append(gate.advisoryWarningCount())
+                .append("`\n\n");
+        markdown.append("| Check | Split | Blocking | Result | Expected | Observed |\n");
+        markdown.append("| --- | --- | --- | --- | --- | --- |\n");
+        for (GoldenEvaluationGate.GateCheck check : gate.checks()) {
+            markdown.append("| ").append(check.id())
+                    .append(" | ").append(check.split())
+                    .append(" | ").append(check.blocking())
+                    .append(" | ").append(check.passed() ? "PASS" : "FAIL")
+                    .append(" | ").append(check.expectation())
+                    .append(" | ").append(check.observed())
+                    .append(" |\n");
+        }
+        markdown.append("\n");
     }
 
     private static void appendRetrievalMetrics(

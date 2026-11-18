@@ -13,6 +13,7 @@ public record GoldenEvaluationReport(
         GoldenDataset.Provenance provenance,
         String generatedAt,
         Totals totals,
+        GoldenEvaluationGate gate,
         Map<String, RetrievalMetrics> retrievalMetrics,
         Map<String, HandoffMetrics> handoffMetrics,
         Map<String, Map<String, ReasonMetrics>> handoffReasonMetrics,
@@ -31,6 +32,7 @@ public record GoldenEvaluationReport(
         Objects.requireNonNull(provenance, "provenance");
         Objects.requireNonNull(generatedAt, "generatedAt");
         Objects.requireNonNull(totals, "totals");
+        Objects.requireNonNull(gate, "gate");
         retrievalMetrics = Map.copyOf(Objects.requireNonNull(
                 retrievalMetrics, "retrievalMetrics"));
         handoffMetrics = Map.copyOf(Objects.requireNonNull(
@@ -54,6 +56,7 @@ public record GoldenEvaluationReport(
                 provenance,
                 generatedAt,
                 totals,
+                gate,
                 retrievalMetrics,
                 handoffMetrics,
                 handoffReasonMetrics,
