@@ -175,6 +175,8 @@ Java 版已经实现：
 - Intent Accuracy
 - Macro-F1
 - per-class Precision / Recall / F1
+- Golden RAG Recall@1/3/5、MRR@5、citation hit rate、ACL violation、P95
+- 策略级转人工 Accuracy、Precision、Recall、误转人工和漏转人工
 - LLM-as-Judge 四维评分
 - baseline 保存和回归检测
 - `/monitor`
@@ -188,6 +190,17 @@ Java 版已经实现：
 - `src/main/java/com/echomind/evaluation/EndToEndEvaluator.java`
 - `src/main/java/com/echomind/evaluation/LLMJudge.java`
 - `src/main/java/com/echomind/monitor/PerformanceMonitor.java`
+
+### Golden RAG And Handoff
+
+```text
+POST /eval/golden-rag/jobs
+GET  /eval/jobs/{jobId}/report.md
+```
+
+`rag-support-golden-v1` 固定 12 篇文档、12 个 Chunk、30 条检索案例和 20 条
+转人工策略案例。检索案例按 20/10、转人工案例按 12/8 分为 DEV/HOLDOUT，执行真实
+BGE ONNX 和 MySQL 混合检索。数据集为合成方法验证基线，V1 不调用外部 LLM。
 
 ### Swagger / OpenAPI
 

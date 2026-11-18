@@ -45,8 +45,8 @@ $env:DOCKER_HOST = "npipe:////./pipe/dockerDesktopLinuxEngine"
 
 当前工作树验证结果：
 
-- Backend: `246/246`
-- Frontend: `17/17`
+- Backend: `269/269` across 57 Surefire suites
+- Frontend: `20/20`
 - Vite production build: passed
 - Live MySQL / Testcontainers skips: `0`
 - Flyway V1-V11 and demo V100: passed on MySQL 8.4
@@ -287,6 +287,37 @@ POST /api/v1/knowledge/embedding-migrations
 单条结果状态为 `PLANNED`、`MIGRATED`、`SKIPPED` 或 `FAILED`。`limit` 最大 500；
 BGE 模型不可用时接口返回 `503 EMBEDDING_UNAVAILABLE`。源版本存在混合 ACL、chunk
 数不一致，或目标版本 ACL 与源版本不同时，迁移会失败而不是发布错误可见性。
+
+### Golden RAG And Handoff Evaluation
+
+版本化合成数据集位于：
+
+```text
+EchoMindJava/src/main/resources/eval/golden/rag-support-golden-v1/
+```
+
+提交异步评测：
+
+```json
+POST /eval/golden-rag/jobs
+{
+  "dataset_version": "rag-support-golden-v1"
+}
+```
+
+数据固定 12 篇文档、12 个 Chunk、30 条检索案例和 20 条转人工案例。检索切分为
+DEV 20 / HOLDOUT 10，转人工切分为 DEV 12 / HOLDOUT 8。服务使用
+`tenant-golden-v1` 导入固定文档，执行真实 MySQL + BGE 检索，并输出
+Recall@1/3/5、MRR@5、引用命中率、ACL 违规、P95 延迟和策略级转人工指标。
+
+Markdown 报告：
+
+```text
+GET /eval/jobs/{jobId}/report.md
+```
+
+该数据集是 `synthetic`、非人工审核、非生产代表性样本，V1 外部 LLM token 为 0。
+详见 [Golden RAG And Handoff V1](./experiments/GOLDEN_RAG_HANDOFF_V1.md)。
 
 词法或向量任一路失败时，响应会返回 `degraded_modes`，不会把降级结果伪装成全链路成功。
 现有降级值包括：
