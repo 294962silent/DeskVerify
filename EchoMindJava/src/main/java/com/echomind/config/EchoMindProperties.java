@@ -229,6 +229,7 @@ public class EchoMindProperties {
     public static class Eval {
         private String baselinePath = "data/eval/baseline.json";
         private String jobsPath = "data/eval/jobs.json";
+        private GoldenGate goldenGate = new GoldenGate();
 
         public String getBaselinePath() {
             return baselinePath;
@@ -244,6 +245,80 @@ public class EchoMindProperties {
 
         public void setJobsPath(String jobsPath) {
             this.jobsPath = jobsPath;
+        }
+
+        public GoldenGate getGoldenGate() {
+            return goldenGate;
+        }
+
+        public void setGoldenGate(GoldenGate goldenGate) {
+            this.goldenGate = goldenGate;
+        }
+    }
+
+    public static class GoldenGate {
+        private double maxMetricDrop = 0.02;
+        private int maxAclViolations = 0;
+        private double maxDegradedRate = 0.0;
+        private double minHandoffRecall = 0.95;
+        private double maxFalseEscalationRate = 0.10;
+        private double maxMissedHandoffRate = 0.10;
+        private long p95LatencyAdvisoryMs = 2000;
+
+        public double getMaxMetricDrop() {
+            return maxMetricDrop;
+        }
+
+        public void setMaxMetricDrop(double maxMetricDrop) {
+            this.maxMetricDrop = maxMetricDrop;
+        }
+
+        public int getMaxAclViolations() {
+            return maxAclViolations;
+        }
+
+        public void setMaxAclViolations(int maxAclViolations) {
+            this.maxAclViolations = maxAclViolations;
+        }
+
+        public double getMaxDegradedRate() {
+            return maxDegradedRate;
+        }
+
+        public void setMaxDegradedRate(double maxDegradedRate) {
+            this.maxDegradedRate = maxDegradedRate;
+        }
+
+        public double getMinHandoffRecall() {
+            return minHandoffRecall;
+        }
+
+        public void setMinHandoffRecall(double minHandoffRecall) {
+            this.minHandoffRecall = minHandoffRecall;
+        }
+
+        public double getMaxFalseEscalationRate() {
+            return maxFalseEscalationRate;
+        }
+
+        public void setMaxFalseEscalationRate(double maxFalseEscalationRate) {
+            this.maxFalseEscalationRate = maxFalseEscalationRate;
+        }
+
+        public double getMaxMissedHandoffRate() {
+            return maxMissedHandoffRate;
+        }
+
+        public void setMaxMissedHandoffRate(double maxMissedHandoffRate) {
+            this.maxMissedHandoffRate = maxMissedHandoffRate;
+        }
+
+        public long getP95LatencyAdvisoryMs() {
+            return p95LatencyAdvisoryMs;
+        }
+
+        public void setP95LatencyAdvisoryMs(long p95LatencyAdvisoryMs) {
+            this.p95LatencyAdvisoryMs = p95LatencyAdvisoryMs;
         }
     }
 

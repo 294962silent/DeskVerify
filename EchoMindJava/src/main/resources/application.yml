@@ -86,6 +86,14 @@ echomind:
   eval:
     baseline-path: ${EVAL_BASELINE_PATH:data/eval/baseline.json}
     jobs-path: ${EVAL_JOBS_PATH:${ECHOMIND_DATA_DIR:data/java}/eval/jobs.json}
+    golden-gate:
+      max-metric-drop: ${GOLDEN_EVAL_MAX_METRIC_DROP:0.02}
+      max-acl-violations: ${GOLDEN_EVAL_MAX_ACL_VIOLATIONS:0}
+      max-degraded-rate: ${GOLDEN_EVAL_MAX_DEGRADED_RATE:0.0}
+      min-handoff-recall: ${GOLDEN_EVAL_MIN_HANDOFF_RECALL:0.95}
+      max-false-escalation-rate: ${GOLDEN_EVAL_MAX_FALSE_ESCALATION_RATE:0.10}
+      max-missed-handoff-rate: ${GOLDEN_EVAL_MAX_MISSED_HANDOFF_RATE:0.10}
+      p95-latency-advisory-ms: ${GOLDEN_EVAL_P95_ADVISORY_MS:2000}
   skills:
     root-dir: ${ECHOMIND_SKILLS_DIR:skills}
     max-prompt-chars: ${ECHOMIND_SKILLS_MAX_PROMPT_CHARS:5000}
