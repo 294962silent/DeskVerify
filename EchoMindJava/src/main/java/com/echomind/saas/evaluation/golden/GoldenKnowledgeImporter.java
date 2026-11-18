@@ -18,7 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-public final class GoldenKnowledgeImporter {
+public class GoldenKnowledgeImporter {
 
     private static final String CREATED_BY = "golden-dataset-loader";
 
