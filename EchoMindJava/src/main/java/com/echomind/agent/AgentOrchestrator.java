@@ -31,12 +31,21 @@ public class AgentOrchestrator {
     private final IntentRecognizer intentRecognizer;
     private final Map<AgentType, List<BaseAgent>> pool;
     private final RequestTraceStore traceStore;
+    private final HandoffPolicy handoffPolicy;
+    private final HandoffSignalExtractor handoffSignalExtractor;
     private final Map<IntentCategory, AgentType> routing = new EnumMap<>(IntentCategory.class);
 
-    public AgentOrchestrator(IntentRecognizer intentRecognizer, Map<AgentType, List<BaseAgent>> pool, RequestTraceStore traceStore) {
+    public AgentOrchestrator(
+            IntentRecognizer intentRecognizer,
+            Map<AgentType, List<BaseAgent>> pool,
+            RequestTraceStore traceStore,
+            HandoffPolicy handoffPolicy,
+            HandoffSignalExtractor handoffSignalExtractor) {
         this.intentRecognizer = intentRecognizer;
         this.pool = pool;
         this.traceStore = traceStore;
+        this.handoffPolicy = handoffPolicy;
+        this.handoffSignalExtractor = handoffSignalExtractor;
         routing.put(IntentCategory.TECHNICAL, AgentType.TECHNICAL);
         routing.put(IntentCategory.TECHNICAL_LOGIN, AgentType.TECHNICAL);
         routing.put(IntentCategory.TECHNICAL_CRASH, AgentType.TECHNICAL);
@@ -95,10 +104,8 @@ public class AgentOrchestrator {
         }
 
         AgentResponse response = execute(req, decision.primaryAgent());
-        boolean escalated = response.escalate()
-                || req.urgency() == UrgencyLevel.CRITICAL
-                || req.intent() == IntentCategory.ESCALATION
-                || req.intent() == IntentCategory.HUMAN_HANDOFF;
+        boolean escalated = handoffPolicy.decide(
+                handoffSignalExtractor.from(req, response)).handoff();
         OrchestratorResult result = new OrchestratorResult(
                 req.requestId(),
                 response.content(),
@@ -145,7 +152,10 @@ public class AgentOrchestrator {
             }
         }
         String content = parts.isEmpty() ? "抱歉，所有 Agent 均处理失败。" : String.join("\n\n", parts);
-        boolean escalate = responses.stream().anyMatch(AgentResponse::escalate);
+        boolean escalate = responses.stream()
+                .map(response -> handoffPolicy.decide(
+                        handoffSignalExtractor.from(req, response)))
+                .anyMatch(HandoffDecision::handoff);
         List<AgentType> agentTypes = responses.stream()
                 .filter(AgentResponse::success)
                 .map(AgentResponse::agentType)
