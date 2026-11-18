@@ -46,15 +46,16 @@ public class JdbcCommerceReadRepository implements CommerceReadRepository {
                 """, ORDER_MAPPER, tenantId.value(), customerId.value());
 
         Optional<SubscriptionSummary> subscription = loadCurrentSubscription(tenantId, customerId);
-        if (subscription.isEmpty()) {
-            throw new IllegalStateException("customer has no subscription");
+        Optional<PlanSummary> plan = Optional.empty();
+        List<Entitlement> entitlements = List.of();
+        if (subscription.isPresent()) {
+            SubscriptionSummary selectedSubscription = subscription.orElseThrow();
+            plan = Optional.of(loadPlan(
+                    tenantId, customerId, selectedSubscription.subscriptionId()));
+            entitlements = loadEntitlements(
+                    tenantId, customerId, selectedSubscription.subscriptionId());
         }
 
-        SubscriptionSummary selectedSubscription = subscription.orElseThrow();
-        PlanSummary plan = loadPlan(
-                tenantId, customerId, selectedSubscription.subscriptionId());
-        List<Entitlement> entitlements = loadEntitlements(
-                tenantId, customerId, selectedSubscription.subscriptionId());
         List<InvoiceSummary> invoices = loadInvoices(tenantId, customerId);
         List<PaymentAttemptSummary> paymentAttempts =
                 loadPaymentAttempts(tenantId, customerId, invoices);

@@ -7,7 +7,7 @@ import java.util.Optional;
 public record CommercialSnapshot(
         CustomerAccount account,
         List<CommerceOrder> orders,
-        PlanSummary currentPlan,
+        Optional<PlanSummary> currentPlan,
         List<Entitlement> entitlements,
         Optional<SubscriptionSummary> currentSubscription,
         List<InvoiceSummary> invoices,

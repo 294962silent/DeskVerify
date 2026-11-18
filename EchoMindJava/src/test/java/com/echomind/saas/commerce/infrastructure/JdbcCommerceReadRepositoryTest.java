@@ -13,6 +13,7 @@ import java.time.Instant;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.testcontainers.containers.MySQLContainer;
@@ -20,6 +21,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @Testcontainers(disabledWithoutDocker = true)
 class JdbcCommerceReadRepositoryTest {
@@ -28,6 +30,7 @@ class JdbcCommerceReadRepositoryTest {
     private static final Instant ORDER_A1_AT = Instant.parse("2025-01-03T10:00:00Z");
     private static final Instant ACTIVE_STARTED_AT = Instant.parse("2025-02-01T00:00:00Z");
     private static final Instant HISTORICAL_STARTED_AT = Instant.parse("2025-03-01T00:00:00Z");
+    private static final Instant TIE_AT = Instant.parse("2025-06-01T00:00:00Z");
 
     @Container
     static final MySQLContainer<?> MYSQL = MySqlTestContainers.create();
@@ -71,11 +74,11 @@ class JdbcCommerceReadRepositoryTest {
         assertThat(snapshot.orders().getFirst().fulfilledAt()).isEqualTo(ORDER_A1_AT.plusSeconds(60));
         assertThat(snapshot.orders().getFirst().subscriptionId()).isEqualTo("subscription-a-active");
 
-        assertThat(snapshot.currentPlan().planId()).isEqualTo("plan-a-pro");
-        assertThat(snapshot.currentPlan().code()).isEqualTo("PRO");
-        assertThat(snapshot.currentPlan().displayName()).isEqualTo("Pro");
-        assertThat(snapshot.currentPlan().price().amountMinor()).isEqualTo(99_900L);
-        assertThat(snapshot.currentPlan().billingInterval()).isEqualTo("YEAR");
+        assertThat(snapshot.currentPlan().orElseThrow().planId()).isEqualTo("plan-a-pro");
+        assertThat(snapshot.currentPlan().orElseThrow().code()).isEqualTo("PRO");
+        assertThat(snapshot.currentPlan().orElseThrow().displayName()).isEqualTo("Pro");
+        assertThat(snapshot.currentPlan().orElseThrow().price().amountMinor()).isEqualTo(99_900L);
+        assertThat(snapshot.currentPlan().orElseThrow().billingInterval()).isEqualTo("YEAR");
         assertThat(snapshot.entitlements()).extracting(Entitlement::code)
                 .containsExactly("seats", "sso");
 
@@ -138,7 +141,7 @@ class JdbcCommerceReadRepositoryTest {
                 .load(new TenantId("tenant-a"), new CustomerId("customer-a"))
                 .orElseThrow();
 
-        assertThat(snapshot.currentPlan().planId()).isEqualTo("plan-a-pro");
+        assertThat(snapshot.currentPlan().orElseThrow().planId()).isEqualTo("plan-a-pro");
     }
 
     @Test
@@ -151,13 +154,81 @@ class JdbcCommerceReadRepositoryTest {
 
         assertThat(snapshot.currentSubscription().orElseThrow().subscriptionId())
                 .isEqualTo("subscription-a-historical");
-        assertThat(snapshot.currentPlan().planId()).isEqualTo("plan-a-basic");
+        assertThat(snapshot.currentPlan().orElseThrow().planId()).isEqualTo("plan-a-basic");
+    }
+
+    @Test
+    void returnsEmptySubscriptionDataWhenTheVisibleAccountHasNoSubscription() {
+        CommercialSnapshot snapshot = repository
+                .load(new TenantId("tenant-a"), new CustomerId("customer-b"))
+                .orElseThrow();
+
+        assertThat(snapshot.currentSubscription()).isEmpty();
+        assertThat(snapshot.currentPlan()).isEmpty();
+        assertThat(snapshot.entitlements()).isEmpty();
+        assertThat(snapshot.orders()).extracting(CommerceOrder::orderId)
+                .containsExactly("order-c1");
+        assertThat(snapshot.invoices()).extracting(InvoiceSummary::invoiceId)
+                .containsExactly("invoice-c1");
+        assertThat(snapshot.paymentAttempts()).extracting(PaymentAttemptSummary::paymentAttemptId)
+                .containsExactly("payment-c1");
+    }
+
+    @Test
+    void breaksEqualOrderTimestampsByOrderIdDescending() {
+        CommercialSnapshot snapshot = repository
+                .load(new TenantId("tenant-a"), new CustomerId("customer-c"))
+                .orElseThrow();
+
+        assertThat(snapshot.orders()).extracting(CommerceOrder::orderId)
+                .containsExactly("order-tie-b", "order-tie-a");
+    }
+
+    @Test
+    void breaksEqualInvoiceTimestampsByInvoiceIdDescending() {
+        CommercialSnapshot snapshot = repository
+                .load(new TenantId("tenant-a"), new CustomerId("customer-c"))
+                .orElseThrow();
+
+        assertThat(snapshot.invoices()).extracting(InvoiceSummary::invoiceId)
+                .containsExactly("invoice-tie-b", "invoice-tie-a");
+    }
+
+    @Test
+    void breaksEqualPaymentAttemptTimestampsByPaymentAttemptIdDescending() {
+        CommercialSnapshot snapshot = repository
+                .load(new TenantId("tenant-a"), new CustomerId("customer-c"))
+                .orElseThrow();
+
+        assertThat(snapshot.paymentAttempts())
+                .extracting(PaymentAttemptSummary::paymentAttemptId)
+                .containsExactly("payment-tie-b", "payment-tie-a");
+    }
+
+    @Test
+    void rejectsSubscriptionReferencesOwnedByAnotherCustomer() {
+        assertThatThrownBy(() -> insertOrder("tenant-a", "order-invalid-owner", "customer-b",
+                "INVALID", 1, 100L, ORDER_A1_AT, null, "subscription-a-active"))
+                .isInstanceOf(DataIntegrityViolationException.class);
+
+        assertThatThrownBy(() -> insertInvoice("tenant-a", "invoice-invalid-owner", "customer-b",
+                "subscription-a-active", 100L, "OPEN", "2025-07-01T00:00:00Z", null))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void rejectsInvoiceReferencesOwnedByAnotherCustomer() {
+        assertThatThrownBy(() -> insertPaymentAttempt("tenant-a", "payment-invalid-owner",
+                "customer-b", "invoice-a-late", 100L, "FAILED",
+                "2025-07-01T00:00:00Z", "declined"))
+                .isInstanceOf(DataIntegrityViolationException.class);
     }
 
     private void insertFixture() {
         insertAccount("tenant-a", "customer-a", "Acme China", "crm-a");
         insertAccount("tenant-b", "customer-a", "Acme Global", "crm-b");
         insertAccount("tenant-a", "customer-b", "Beta China", "crm-c");
+        insertAccount("tenant-a", "customer-c", "Tiebreaker China", "crm-d");
 
         insertPlan("tenant-a", "plan-a-pro", "PRO", "Pro", "YEAR", 99_900L);
         insertPlan("tenant-a", "plan-a-basic", "BASIC", "Basic", "MONTH", 1_900L);
@@ -173,6 +244,8 @@ class JdbcCommerceReadRepositoryTest {
                 "CANCELED", ACTIVE_STARTED_AT.minusSeconds(86_400));
         insertSubscription("tenant-b", "subscription-b-active", "customer-a", "plan-b-team",
                 "ACTIVE", HISTORICAL_STARTED_AT);
+        insertSubscription("tenant-a", "subscription-c-active", "customer-c", "plan-a-pro",
+                "ACTIVE", ACTIVE_STARTED_AT);
 
         insertOrder("tenant-a", "order-a2", "customer-a", "PRO-MONTH", 1, 8_900L,
                 ORDER_A2_AT, null, null);
@@ -182,6 +255,10 @@ class JdbcCommerceReadRepositoryTest {
                 ORDER_A1_AT, null, null);
         insertOrder("tenant-a", "order-c1", "customer-b", "BASIC-MONTH", 1, 1_900L,
                 ORDER_A2_AT, null, null);
+        insertOrder("tenant-a", "order-tie-a", "customer-c", "PRO-MONTH", 1, 8_900L,
+                TIE_AT, null, "subscription-c-active");
+        insertOrder("tenant-a", "order-tie-b", "customer-c", "PRO-MONTH", 1, 8_900L,
+                TIE_AT, null, "subscription-c-active");
 
         insertInvoice("tenant-a", "invoice-a-early", "customer-a", "subscription-a-historical",
                 1_900L, "PAID", "2025-01-31T00:00:00Z", "2025-02-01T00:00:00Z");
@@ -189,8 +266,12 @@ class JdbcCommerceReadRepositoryTest {
                 12_500L, "OPEN", "2025-03-31T00:00:00Z", null);
         insertInvoice("tenant-b", "invoice-b1", "customer-a", "subscription-b-active",
                 2_900L, "PAID", "2025-03-31T00:00:00Z", "2025-03-31T00:00:00Z");
-        insertInvoice("tenant-a", "invoice-c1", "customer-b", "subscription-a-active",
+        insertInvoice("tenant-a", "invoice-c1", "customer-b", null,
                 50_000L, "OPEN", "2025-04-30T00:00:00Z", null);
+        insertInvoice("tenant-a", "invoice-tie-a", "customer-c", "subscription-c-active",
+                8_900L, "OPEN", "2025-07-01T00:00:00Z", null);
+        insertInvoice("tenant-a", "invoice-tie-b", "customer-c", "subscription-c-active",
+                8_900L, "OPEN", "2025-07-01T00:00:00Z", null);
 
         insertPaymentAttempt("tenant-a", "payment-a-1", "customer-a", "invoice-a-early",
                 1_900L, "SUCCEEDED", "2025-02-01T00:00:00Z", null);
@@ -200,6 +281,10 @@ class JdbcCommerceReadRepositoryTest {
                 2_900L, "SUCCEEDED", "2025-03-31T00:00:00Z", null);
         insertPaymentAttempt("tenant-a", "payment-c1", "customer-b", "invoice-c1",
                 50_000L, "FAILED", "2025-05-01T00:00:00Z", "insufficient_funds");
+        insertPaymentAttempt("tenant-a", "payment-tie-a", "customer-c", "invoice-tie-a",
+                8_900L, "FAILED", TIE_AT.toString(), "declined");
+        insertPaymentAttempt("tenant-a", "payment-tie-b", "customer-c", "invoice-tie-a",
+                8_900L, "FAILED", TIE_AT.toString(), "declined");
     }
 
     private void insertAccount(String tenantId, String customerId, String displayName, String externalRef) {
