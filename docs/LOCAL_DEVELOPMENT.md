@@ -45,7 +45,7 @@ $env:DOCKER_HOST = "npipe:////./pipe/dockerDesktopLinuxEngine"
 
 当前工作树验证结果：
 
-- Backend: `274/274` across 58 Surefire suites
+- Backend (GitHub Actions Ubuntu): `272/272` across 57 Surefire suites
 - Frontend: `21/21`
 - Vite production build: passed
 - Live MySQL / Testcontainers skips: `0`
@@ -63,6 +63,18 @@ $env:DOCKER_HOST = "npipe:////./pipe/dockerDesktopLinuxEngine"
 - 断言 Golden E2E 实际执行、`skipped=0` 且 `gate.passed=true`。
 - Node 22 下的前端测试和 Vite 生产构建。
 - 上传 Surefire、Golden JSON/Markdown 和前端 build artifact。
+
+当前 Draft PR 验证运行：
+
+```text
+https://github.com/294962silent/EchoMind-SaaS-Agent/actions/runs/44346435272
+```
+
+该运行的后端、Golden artifact 断言和前端 job 均成功，并上传：
+
+- `backend-surefire-reports`
+- `golden-evaluation-reports`
+- `frontend-dist`
 
 本地执行同一 Golden artifact 断言：
 

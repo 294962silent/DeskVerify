@@ -254,7 +254,8 @@ Fix:
 
 Latest local verification on this machine:
 
-- Backend full suite: 58 Surefire suites, 274 tests, 0 failures, 0 errors,
+- Backend GitHub Actions full suite: 57 Surefire suites, 272 tests,
+  0 failures, 0 errors,
   0 skips.
 - Golden E2E: passed against MySQL 8.4 + BGE ONNX with the fixed dataset
   digest, fixed document/chunk IDs, JSON and Markdown reports, and repeated
@@ -262,8 +263,12 @@ Latest local verification on this machine:
 - Golden artifact gate: `gate.passed=true`, 18 checks, E2E tests=1,
   skipped=0.
 - Report authorization: tenant and user ownership checks passed.
-- Frontend: 21 tests passed.
-- Vite production build: passed.
+- Frontend GitHub Actions job: 21 tests passed and Vite production build
+  passed.
+- CI run:
+  `https://github.com/294962silent/EchoMind-SaaS-Agent/actions/runs/44346435272`.
+- CI artifacts: `backend-surefire-reports`, `golden-evaluation-reports`, and
+  `frontend-dist` were uploaded successfully.
 
 The all-perfect DEV/HOLDOUT metrics above are the observed baseline for this
 small synthetic dataset, not evidence of production generalization.
