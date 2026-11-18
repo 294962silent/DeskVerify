@@ -26,7 +26,7 @@
 
 **Files:**
 
-- Create: `EchoMindJava/src/main/resources/db/migration/V8__ticket_system.sql`
+- Create: `EchoMindJava/src/main/resources/db/migration/V9__ticket_system.sql`
 - Create: `EchoMindJava/src/main/java/com/echomind/saas/ticket/domain/TicketId.java`
 - Create: `EchoMindJava/src/main/java/com/echomind/saas/ticket/domain/TicketStatus.java`
 - Create: `EchoMindJava/src/main/java/com/echomind/saas/ticket/domain/TicketPriority.java`
@@ -124,7 +124,7 @@ No model or Spring dependency belongs in the domain package.
 - [ ] **Step 6: Commit**
 
 ```powershell
-git add -- EchoMindJava/src/main/resources/db/migration/V8__ticket_system.sql EchoMindJava/src/main/java/com/echomind/saas/ticket/domain EchoMindJava/src/test/java/com/echomind/saas/ticket/domain
+git add -- EchoMindJava/src/main/resources/db/migration/V9__ticket_system.sql EchoMindJava/src/main/java/com/echomind/saas/ticket/domain EchoMindJava/src/test/java/com/echomind/saas/ticket/domain
 git commit -m "feat: add ticket domain and schema"
 ```
 
