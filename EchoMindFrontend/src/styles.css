@@ -1171,6 +1171,73 @@ a { color: inherit; }
   font-size: 13px;
 }
 
+.release-gate {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel-2);
+}
+
+.release-gate-passed {
+  border-color: rgba(65, 201, 140, 0.55);
+  background: var(--green-soft);
+}
+
+.release-gate-failed {
+  border-color: rgba(241, 107, 118, 0.65);
+  background: var(--red-soft);
+}
+
+.release-gate-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.release-gate-heading strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--text);
+  font-size: 20px;
+  letter-spacing: 0.04em;
+}
+
+.release-gate-heading p,
+.release-gate-advisory p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.release-gate-checks,
+.release-gate-advisory {
+  display: grid;
+  gap: 8px;
+}
+
+.release-gate-checks p {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.release-gate-checks strong {
+  color: var(--red);
+  font-size: 12px;
+}
+
+.release-gate-checks span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .evaluation-table-wrap {
   overflow-x: auto;
   margin-top: 14px;

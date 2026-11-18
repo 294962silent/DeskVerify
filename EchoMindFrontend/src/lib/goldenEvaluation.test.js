@@ -55,3 +55,40 @@ test('metric rows use a stable split order', () => {
   })
   assert.deepEqual(rows.map((row) => row.split), ['DEV', 'HOLDOUT', 'ALL'])
 })
+
+test('golden report normalization preserves release gate checks', () => {
+  const report = normalizeGoldenRagReport({
+    dataset_version: 'rag-support-golden-v1',
+    gate: {
+      passed: false,
+      blocking_failures: 1,
+      advisory_warnings: 1,
+      checks: [
+        {
+          id: 'retrieval.DEV.recall_at5',
+          split: 'DEV',
+          blocking: true,
+          passed: false,
+          expectation: '>= 0.9800',
+          observed: '0.9500',
+        },
+        {
+          id: 'retrieval.ALL.p95_latency_ms',
+          split: 'ALL',
+          blocking: false,
+          passed: false,
+          expectation: '<= 2000',
+          observed: '2400',
+        },
+      ],
+      thresholds: { max_metric_drop: 0.02 },
+    },
+  })
+
+  assert.equal(report.gate.passed, false)
+  assert.equal(report.gate.blockingFailures, 1)
+  assert.equal(report.gate.advisoryWarnings, 1)
+  assert.equal(report.failedGateChecks.length, 1)
+  assert.equal(report.gateChecks.length, 2)
+  assert.equal(report.failedGateChecks[0].id, 'retrieval.DEV.recall_at5')
+})

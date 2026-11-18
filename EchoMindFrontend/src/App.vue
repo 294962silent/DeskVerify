@@ -365,6 +365,34 @@
           <p class="scope-note">
             合成数据，仅用于方法有效性和回归验证，不代表真实用户分布或生产质量。
           </p>
+          <div
+            v-if="goldenReport.gate.available"
+            class="release-gate"
+            :class="goldenReport.gate.passed ? 'release-gate-passed' : 'release-gate-failed'"
+          >
+            <div class="release-gate-heading">
+              <div>
+                <span class="kicker">Release gate</span>
+                <strong>{{ goldenReport.gate.passed ? 'PASSED' : 'FAILED' }}</strong>
+              </div>
+              <p>
+                Blocking failures {{ goldenReport.gate.blockingFailures }}
+                · Advisory warnings {{ goldenReport.gate.advisoryWarnings }}
+              </p>
+            </div>
+            <div v-if="goldenReport.failedGateChecks.length" class="release-gate-checks">
+              <p v-for="check in goldenReport.failedGateChecks" :key="check.id">
+                <strong>{{ check.id }}</strong>
+                <span>{{ check.split }} · expected {{ check.expectation }} · observed {{ check.observed }}</span>
+              </p>
+            </div>
+            <div v-if="goldenReport.advisoryGateChecks.length" class="release-gate-advisory">
+              <p v-for="check in goldenReport.advisoryGateChecks" :key="check.id">
+                Advisory: {{ check.id }} expected {{ check.expectation }} · observed {{ check.observed }}
+              </p>
+            </div>
+          </div>
+          <p v-else class="scope-note">该历史报告未包含 release gate 信息。</p>
         </section>
         <div class="evaluation-layout">
           <section class="workspace-card">
@@ -816,6 +844,9 @@ async function loadLatestEvaluation() {
       evalError.value = ''
     } else if (latest.status === 'failed') {
       evalError.value = latest.error || '评测任务失败，请查看服务日志。'
+      if (latest.report?.gate) {
+        evalData.value = latest.report
+      }
     } else {
       await pollEvaluation(latest.job_id, generation)
     }
@@ -838,6 +869,9 @@ async function pollEvaluation(jobId, generation) {
     }
     if (job.status === 'failed') {
       evalError.value = job.error || '评测任务失败，请查看服务日志。'
+      if (job.report?.gate) {
+        evalData.value = job.report
+      }
       showToast('评测运行失败')
       return
     }

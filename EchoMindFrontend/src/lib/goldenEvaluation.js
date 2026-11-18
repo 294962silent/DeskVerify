@@ -10,6 +10,21 @@ export function normalizeGoldenRagReport(raw = null) {
   const report = raw || {}
   const datasetVersion = report.dataset_version || report.datasetVersion
   if (!datasetVersion) return null
+  const rawGate = report.gate || {}
+  const gateChecks = (rawGate.checks || []).map((check) => ({
+    id: check.id || '',
+    split: check.split || 'ALL',
+    blocking: Boolean(check.blocking),
+    passed: Boolean(check.passed),
+    expectation: check.expectation || '',
+    observed: check.observed || '',
+  }))
+  const failedGateChecks = gateChecks.filter(
+    (check) => check.blocking && !check.passed,
+  )
+  const advisoryGateChecks = gateChecks.filter(
+    (check) => !check.blocking && !check.passed,
+  )
   return {
     datasetVersion,
     datasetSha256: report.dataset_sha256 || report.datasetSha256 || '',
@@ -37,6 +52,24 @@ export function normalizeGoldenRagReport(raw = null) {
       .filter((item) => !item.passed),
     failedHandoffCases: (report.handoff_cases || report.handoffCases || [])
       .filter((item) => !item.passed),
+    gateChecks,
+    failedGateChecks,
+    advisoryGateChecks,
+    gate: {
+      available: Boolean(report.gate),
+      passed: Boolean(rawGate.passed),
+      blockingFailures: Number(
+        rawGate.blocking_failures
+          ?? rawGate.blockingFailures
+          ?? failedGateChecks.length,
+      ),
+      advisoryWarnings: Number(
+        rawGate.advisory_warnings
+          ?? rawGate.advisoryWarnings
+          ?? advisoryGateChecks.length,
+      ),
+      thresholds: rawGate.thresholds || {},
+    },
     limitations: report.limitations || [],
     downloadPath: report.report_download_path || report.reportDownloadPath || '',
   }
