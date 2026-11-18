@@ -39,7 +39,8 @@ class KnowledgeRetrievalServiceTest {
                 "企业版支持单点登录和统一身份认证。");
         when(repository.lexicalSearch(any(), eq("企业版续费后席位多久生效"), eq(20)))
                 .thenReturn(List.of(new LexicalSearchHit(lexical, 0.92)));
-        when(repository.activeChunks(any())).thenReturn(List.of(lexical, vector));
+        when(repository.activeChunks(any(), eq(embeddings.modelName())))
+                .thenReturn(List.of(lexical, vector));
 
         KnowledgeRetrievalResult result = service.search(
                 "企业版续费后席位多久生效", 3, admin());
@@ -66,11 +67,76 @@ class KnowledgeRetrievalServiceTest {
                 "退款审核通过后五到七个工作日到账。");
         when(repository.lexicalSearch(any(), any(), eq(20)))
                 .thenThrow(new IllegalStateException("fulltext unavailable"));
-        when(repository.activeChunks(any())).thenReturn(List.of(vector));
+        when(repository.activeChunks(any(), eq(embeddings.modelName())))
+                .thenReturn(List.of(vector));
 
         KnowledgeRetrievalResult result = service.search("退款多久到账", 2, admin());
 
         assertThat(result.degradedModes()).contains("lexical_unavailable");
+        assertThat(result.hits()).isNotEmpty();
+        assertThat(result.citations()).isNotEmpty();
+    }
+
+    @Test
+    void unavailableEmbeddingFallsBackToLexicalWithExplicitDegradedModes() {
+        KnowledgeChunk lexical = chunk(
+                "chunk-lexical",
+                "退款到账",
+                "退款",
+                "退款审核通过后五到七个工作日到账。");
+        EmbeddingProvider unavailable = new EmbeddingProvider() {
+            @Override
+            public String modelName() {
+                return "bge-small-zh-v1.5-onnx-fp32";
+            }
+
+            @Override
+            public double[] embed(String text) {
+                throw new EmbeddingUnavailableException("model missing");
+            }
+
+            @Override
+            public boolean available() {
+                return false;
+            }
+        };
+        KnowledgeRetrievalService fallbackService = new KnowledgeRetrievalService(
+                repository, unavailable, new HeuristicReranker());
+        when(repository.lexicalSearch(any(), eq("退款多久到账"), eq(20)))
+                .thenReturn(List.of(new LexicalSearchHit(lexical, 0.9)));
+        when(repository.activeChunks(any(), eq(unavailable.modelName())))
+                .thenReturn(List.of(lexical));
+
+        KnowledgeRetrievalResult result = fallbackService.search(
+                "退款多久到账", 2, admin());
+
+        assertThat(result.degradedModes())
+                .contains("embedding_unavailable", "vector_unavailable");
+        assertThat(result.hits()).isNotEmpty();
+        assertThat(result.citations()).isNotEmpty();
+    }
+
+    @Test
+    void oldEmbeddingModelProducesExplicitMismatchAndVectorUnavailableModes() {
+        KnowledgeChunk lexical = chunk(
+                "chunk-lexical",
+                "退款到账",
+                "退款",
+                "退款审核通过后五到七个工作日到账。");
+        when(repository.lexicalSearch(any(), eq("退款多久到账"), eq(20)))
+                .thenReturn(List.of(new LexicalSearchHit(lexical, 0.9)));
+        when(repository.activeChunks(any(), eq(embeddings.modelName())))
+                .thenReturn(List.of());
+        when(repository.countActiveChunksWithOtherEmbeddingModel(
+                        any(), eq(embeddings.modelName())))
+                .thenReturn(1L);
+
+        KnowledgeRetrievalResult result = service.search(
+                "退款多久到账", 2, admin());
+
+        assertThat(result.degradedModes()).contains(
+                "embedding_model_mismatch",
+                "vector_unavailable");
         assertThat(result.hits()).isNotEmpty();
         assertThat(result.citations()).isNotEmpty();
     }

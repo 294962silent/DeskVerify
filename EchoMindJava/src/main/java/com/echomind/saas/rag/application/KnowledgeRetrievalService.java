@@ -11,11 +11,9 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import org.springframework.stereotype.Service;
@@ -56,24 +54,75 @@ public class KnowledgeRetrievalService implements KnowledgeRetrieval {
         CompletableFuture<List<LexicalSearchHit>> lexicalFuture =
                 CompletableFuture.supplyAsync(
                         () -> repository.lexicalSearch(scope, query, recall));
-        CompletableFuture<List<KnowledgeChunk>> vectorFuture =
-                CompletableFuture.supplyAsync(
-                        () -> repository.activeChunks(scope));
+        CompletableFuture<VectorSearchOutcome> vectorFuture =
+                CompletableFuture.supplyAsync(() -> {
+                    List<KnowledgeChunk> chunks = repository.activeChunks(
+                            scope, embeddings.modelName());
+                    boolean modelMismatch =
+                            repository.countActiveChunksWithOtherEmbeddingModel(
+                                    scope, embeddings.modelName()) > 0;
+                    if (chunks.isEmpty()) {
+                        boolean embeddingUnavailable =
+                                modelMismatch && !embeddings.available();
+                        return new VectorSearchOutcome(
+                                List.of(),
+                                modelMismatch,
+                                embeddingUnavailable,
+                                false);
+                    }
+                    if (!embeddings.available()) {
+                        return new VectorSearchOutcome(
+                                List.of(),
+                                modelMismatch,
+                                true,
+                                true);
+                    }
+                    try {
+                        return new VectorSearchOutcome(
+                                vectorScores(
+                                        embeddings.embedQuery(query),
+                                        chunks,
+                                        recall),
+                                modelMismatch,
+                                false,
+                                true);
+                    } catch (EmbeddingUnavailableException exception) {
+                        return new VectorSearchOutcome(
+                                List.of(),
+                                modelMismatch,
+                                true,
+                                true);
+                    }
+                });
 
         List<LexicalSearchHit> lexical = List.of();
-        List<KnowledgeChunk> chunks = List.of();
+        List<ScoredChunk> vector = List.of();
+        VectorSearchOutcome vectorOutcome = VectorSearchOutcome.empty();
         try {
             lexical = lexicalFuture.join();
         } catch (CompletionException exception) {
             degraded.add("lexical_unavailable");
         }
         try {
-            chunks = vectorFuture.join();
+            vectorOutcome = vectorFuture.join();
+            vector = vectorOutcome.vector();
+            if (vectorOutcome.modelMismatch()) {
+                degraded.add("embedding_model_mismatch");
+            }
+            if (vectorOutcome.embeddingUnavailable()) {
+                degraded.add("embedding_unavailable");
+                degraded.add("vector_unavailable");
+            } else if (vectorOutcome.modelMismatch()
+                    && !vectorOutcome.compatibleVectorsAvailable()) {
+                degraded.add("vector_unavailable");
+            }
         } catch (CompletionException exception) {
+            if (exception.getCause() instanceof EmbeddingUnavailableException) {
+                degraded.add("embedding_unavailable");
+            }
             degraded.add("vector_unavailable");
         }
 
-        List<ScoredChunk> vector = vectorScores(query, chunks, recall);
         List<RetrievalHit> fused = fuse(lexical, vector);
         if (fused.isEmpty()) {
             return new KnowledgeRetrievalResult(
@@ -119,11 +168,10 @@ public class KnowledgeRetrievalService implements KnowledgeRetrieval {
     }
 
     private List<ScoredChunk> vectorScores(
-            String query, List<KnowledgeChunk> chunks, int limit) {
+            double[] queryEmbedding, List<KnowledgeChunk> chunks, int limit) {
         if (chunks.isEmpty()) {
             return List.of();
         }
-        double[] queryEmbedding = embeddings.embed(query);
         return chunks.stream()
                 .map(chunk -> new ScoredChunk(
                         chunk,
@@ -180,7 +228,14 @@ public class KnowledgeRetrievalService implements KnowledgeRetrieval {
     }
 
     private static double cosine(double[] left, double[] right) {
-        int length = Math.min(left.length, right.length);
+        if (left.length != right.length) {
+            throw new IllegalArgumentException(
+                    "embedding dimensions differ: "
+                            + left.length
+                            + " != "
+                            + right.length);
+        }
+        int length = left.length;
         double dot = 0.0;
         double leftNorm = 0.0;
         double rightNorm = 0.0;
@@ -204,5 +259,16 @@ public class KnowledgeRetrievalService implements KnowledgeRetrieval {
     }
 
     private record ScoredChunk(KnowledgeChunk chunk, double score) {
+    }
+
+    private record VectorSearchOutcome(
+            List<ScoredChunk> vector,
+            boolean modelMismatch,
+            boolean embeddingUnavailable,
+            boolean compatibleVectorsAvailable) {
+
+        private static VectorSearchOutcome empty() {
+            return new VectorSearchOutcome(List.of(), false, false, false);
+        }
     }
 }

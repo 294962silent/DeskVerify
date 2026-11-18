@@ -12,6 +12,9 @@ public interface KnowledgeDocumentRepository {
 
     Optional<KnowledgeDocument> findDocument(TenantId tenantId, String documentId);
 
+    Optional<KnowledgeDocument> findDocumentForUpdate(
+            TenantId tenantId, String documentId);
+
     int nextVersion(TenantId tenantId, String documentId);
 
     KnowledgeDocumentVersion insertVersion(
@@ -21,9 +24,25 @@ public interface KnowledgeDocumentRepository {
             TenantId tenantId, String documentId, int versionNumber);
 
     Optional<KnowledgeDocumentVersion> findVersionByChecksum(
-            TenantId tenantId, String documentId, String checksum);
+            TenantId tenantId,
+            String documentId,
+            String checksum,
+            String embeddingModel);
 
     List<KnowledgeDocumentVersion> listVersions(TenantId tenantId, String documentId);
+
+    List<KnowledgeEmbeddingMigrationCandidate> staleEmbeddingCandidates(
+            TenantId tenantId,
+            String embeddingModel,
+            String afterDocumentId,
+            int limit);
+
+    long countStalePublishedVersions(TenantId tenantId, String embeddingModel);
+
+    List<KnowledgeChunkAclSummary> versionChunkAclSummaries(
+            TenantId tenantId,
+            String documentId,
+            int versionNumber);
 
     void markIndexingAndInsertChunks(
             TenantId tenantId,
@@ -45,7 +64,15 @@ public interface KnowledgeDocumentRepository {
             int limit
     );
 
-    List<KnowledgeChunk> activeChunks(KnowledgeSearchScope scope);
+    List<KnowledgeChunk> activeChunks(
+            KnowledgeSearchScope scope,
+            String embeddingModel
+    );
+
+    long countActiveChunksWithOtherEmbeddingModel(
+            KnowledgeSearchScope scope,
+            String embeddingModel
+    );
 
     long countPublishedChunks(TenantId tenantId);
 }

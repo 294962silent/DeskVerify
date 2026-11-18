@@ -2,6 +2,7 @@ package com.echomind.saas.api.error;
 
 import com.echomind.saas.identity.application.TenantAccessDeniedException;
 import com.echomind.saas.platform.idempotency.IdempotencyConflictException;
+import com.echomind.saas.rag.application.EmbeddingUnavailableException;
 import com.echomind.saas.ticket.application.IdempotencyInProgressException;
 import com.echomind.saas.ticket.application.TicketConflictException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -68,6 +69,19 @@ public final class GlobalApiExceptionHandler {
         logDiagnostic(request, exception);
         return response(HttpStatus.CONFLICT, ErrorCode.TICKET_STATE_CONFLICT,
                 "ticket state conflict", request, false);
+    }
+
+    @ExceptionHandler(EmbeddingUnavailableException.class)
+    ResponseEntity<ApiErrorResponse> embeddingUnavailable(
+            EmbeddingUnavailableException exception,
+            HttpServletRequest request) {
+        logDiagnostic(request, exception);
+        return response(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                ErrorCode.EMBEDDING_UNAVAILABLE,
+                "embedding model unavailable",
+                request,
+                true);
     }
 
     @ExceptionHandler({

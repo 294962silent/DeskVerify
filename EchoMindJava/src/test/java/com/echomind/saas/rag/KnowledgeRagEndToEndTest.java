@@ -16,7 +16,14 @@ import com.echomind.llm.LlmGateway;
 import com.echomind.memory.MemoryManager;
 import com.echomind.memory.MemoryContext;
 import com.echomind.monitor.PerformanceMonitor;
+import com.echomind.saas.identity.domain.TenantId;
 import com.echomind.saas.testsupport.MySqlTestContainers;
+import com.echomind.saas.rag.application.KnowledgeDocumentRepository;
+import com.echomind.saas.rag.domain.KnowledgeChunk;
+import com.echomind.saas.rag.domain.KnowledgeDocument;
+import com.echomind.saas.rag.domain.KnowledgeDocumentVersion;
+import com.echomind.saas.rag.domain.KnowledgeVersionStatus;
+import com.echomind.saas.rag.domain.KnowledgeVisibility;
 import com.echomind.skill.SkillManager;
 import com.echomind.tool.KnowledgeToolManager;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -92,6 +99,9 @@ class KnowledgeRagEndToEndTest {
 
     @Autowired
     private JdbcTemplate jdbc;
+
+    @Autowired
+    private KnowledgeDocumentRepository knowledgeRepository;
 
     @Autowired
     private ObjectMapper objectMapper;
@@ -270,6 +280,165 @@ class KnowledgeRagEndToEndTest {
         assertThat(jdbc.queryForObject(
                 "select count(*) from knowledge_chunk where tenant_id = 'tenant-a'",
                 Integer.class)).isEqualTo(2);
+    }
+
+    @Test
+    void migratesLegacyHashDocumentAndPublishesGroundedBgeVersion() throws Exception {
+        String documentId = seedLegacyHashDocument();
+        String adminToken = token("admin-1", "tenant-a", "legacy-migrate");
+        String customerToken = token("customer-1", "tenant-a", "legacy-search");
+
+        mvc.perform(post("/api/v1/knowledge/embedding-migrations")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "dry_run": true,
+                                  "limit": 10
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.dry_run").value(true))
+                .andExpect(jsonPath("$.scanned").value(1))
+                .andExpect(jsonPath("$.planned").value(1))
+                .andExpect(jsonPath("$.migrated").value(0))
+                .andExpect(jsonPath("$.remaining").value(1))
+                .andExpect(jsonPath("$.items[0].status").value("PLANNED"));
+        assertThat(knowledgeRepository.findDocument(
+                        new TenantId("tenant-a"), documentId)
+                .orElseThrow()
+                .currentVersion()).isEqualTo(1);
+
+        mvc.perform(post("/api/v1/knowledge/embedding-migrations")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "dry_run": false,
+                                  "limit": 10
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.scanned").value(1))
+                .andExpect(jsonPath("$.migrated").value(1))
+                .andExpect(jsonPath("$.remaining").value(0))
+                .andExpect(jsonPath("$.items[0].document_id").value(documentId))
+                .andExpect(jsonPath("$.items[0].source_version_number").value(1))
+                .andExpect(jsonPath("$.items[0].target_version_number").value(2))
+                .andExpect(jsonPath("$.items[0].source_embedding_model")
+                        .value("local-hash-char-ngram-v1"))
+                .andExpect(jsonPath("$.items[0].status").value("MIGRATED"));
+
+        assertThat(knowledgeRepository.findDocument(
+                        new TenantId("tenant-a"), documentId)
+                .orElseThrow()
+                .currentVersion()).isEqualTo(2);
+        assertThat(knowledgeRepository.findVersion(
+                        new TenantId("tenant-a"), documentId, 1)
+                .orElseThrow()
+                .status()).isEqualTo(KnowledgeVersionStatus.RETIRED);
+        assertThat(knowledgeRepository.findVersion(
+                        new TenantId("tenant-a"), documentId, 2)
+                .orElseThrow()
+                .status()).isEqualTo(KnowledgeVersionStatus.PUBLISHED);
+        assertThat(jdbc.queryForObject("""
+                select json_length(embedding_json)
+                from knowledge_chunk
+                where tenant_id = 'tenant-a'
+                  and document_id = ?
+                  and version_number = 2
+                """, Integer.class, documentId)).isEqualTo(512);
+
+        mvc.perform(post("/api/v1/knowledge/embedding-migrations")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "dry_run": false,
+                                  "limit": 10
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.scanned").value(0))
+                .andExpect(jsonPath("$.migrated").value(0))
+                .andExpect(jsonPath("$.remaining").value(0));
+
+        mvc.perform(post("/api/v1/knowledge/search")
+                        .header("Authorization", "Bearer " + customerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "query": "退款多久到账",
+                                  "top_k": 3
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.hits[0].document_id").value(documentId))
+                .andExpect(jsonPath("$.hits[0].version_number").value(2))
+                .andExpect(jsonPath("$.hits[0].vector_score").isNumber())
+                .andExpect(jsonPath("$.citations[0].document_title")
+                        .value("旧版退款政策"))
+                .andExpect(jsonPath("$.degraded_modes").isEmpty());
+
+        assertThat(jdbc.queryForObject("""
+                select count(*) from knowledge_document_version
+                where tenant_id = 'tenant-a' and document_id = ?
+                """, Integer.class, documentId)).isEqualTo(2);
+    }
+
+    private String seedLegacyHashDocument() {
+        TenantId tenantId = new TenantId("tenant-a");
+        String documentId = "doc-legacy-hash";
+        String content = "# 退款到账\n\n退款审核通过后五到七个工作日内到账。";
+        KnowledgeDocument document = knowledgeRepository.insertDocument(
+                tenantId,
+                new KnowledgeDocument(
+                        documentId,
+                        "旧版退款政策",
+                        "ACTIVE",
+                        null,
+                        "admin-1"));
+        KnowledgeChunk chunk = new KnowledgeChunk(
+                "chunk-legacy-hash",
+                documentId,
+                1,
+                0,
+                document.title(),
+                content,
+                null,
+                "退款到账",
+                "退款到账",
+                0,
+                content.length(),
+                "a".repeat(64),
+                KnowledgeVisibility.TENANT,
+                null,
+                new double[]{1.0, 0.0, 0.0});
+        knowledgeRepository.insertVersion(
+                tenantId,
+                new KnowledgeDocumentVersion(
+                        documentId,
+                        1,
+                        KnowledgeVersionStatus.INDEXING,
+                        "b".repeat(64),
+                        content,
+                        0,
+                        "local-hash-char-ngram-v1",
+                        "admin-1",
+                        null));
+        knowledgeRepository.markIndexingAndInsertChunks(
+                tenantId,
+                documentId,
+                1,
+                "local-hash-char-ngram-v1",
+                List.of(chunk));
+        knowledgeRepository.publish(
+                tenantId,
+                documentId,
+                1,
+                1,
+                "local-hash-char-ngram-v1");
+        return document.documentId();
     }
 
     private static String token(String subject, String tenantId, String requestId)

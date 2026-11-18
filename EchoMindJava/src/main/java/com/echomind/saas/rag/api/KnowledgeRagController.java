@@ -4,6 +4,9 @@ import com.echomind.saas.identity.domain.ActorScope;
 import com.echomind.saas.rag.application.AddKnowledgeVersionCommand;
 import com.echomind.saas.rag.application.CreateKnowledgeDocumentCommand;
 import com.echomind.saas.rag.application.KnowledgeDocumentView;
+import com.echomind.saas.rag.application.KnowledgeEmbeddingMigrationCommand;
+import com.echomind.saas.rag.application.KnowledgeEmbeddingMigrationResult;
+import com.echomind.saas.rag.application.KnowledgeEmbeddingMigrationService;
 import com.echomind.saas.rag.application.KnowledgeIngestionService;
 import com.echomind.saas.rag.application.KnowledgeRetrieval;
 import com.echomind.saas.rag.application.PublishKnowledgeVersionCommand;
@@ -28,12 +31,15 @@ public class KnowledgeRagController {
 
     private final KnowledgeIngestionService ingestion;
     private final KnowledgeRetrieval retrieval;
+    private final KnowledgeEmbeddingMigrationService embeddingMigration;
 
     public KnowledgeRagController(
             KnowledgeIngestionService ingestion,
-            KnowledgeRetrieval retrieval) {
+            KnowledgeRetrieval retrieval,
+            KnowledgeEmbeddingMigrationService embeddingMigration) {
         this.ingestion = ingestion;
         this.retrieval = retrieval;
+        this.embeddingMigration = embeddingMigration;
     }
 
     @PostMapping("/knowledge-documents")
@@ -91,6 +97,20 @@ public class KnowledgeRagController {
         return ingestion.versions(documentId, actor).stream()
                 .map(KnowledgeDocumentResponse.VersionResponse::from)
                 .toList();
+    }
+
+    @PostMapping("/knowledge/embedding-migrations")
+    @PreAuthorize("hasRole('TENANT_ADMIN')")
+    public KnowledgeEmbeddingMigrationResponse migrateEmbeddings(
+            @Valid @RequestBody KnowledgeEmbeddingMigrationRequest request,
+            @AuthenticationPrincipal ActorScope actor) {
+        KnowledgeEmbeddingMigrationResult result = embeddingMigration.migrate(
+                new KnowledgeEmbeddingMigrationCommand(
+                        request.dryRun(),
+                        request.pageSize(),
+                        request.afterDocumentId()),
+                actor);
+        return KnowledgeEmbeddingMigrationResponse.from(result);
     }
 
     @PostMapping("/knowledge/search")

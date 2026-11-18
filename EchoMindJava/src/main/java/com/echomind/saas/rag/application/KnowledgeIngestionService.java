@@ -118,7 +118,10 @@ public class KnowledgeIngestionService {
         String normalized = normalize(rawContent);
         String checksum = sha256(normalized);
         var duplicate = repository.findVersionByChecksum(
-                tenantId, document.documentId(), checksum);
+                tenantId,
+                document.documentId(),
+                checksum,
+                embeddings.modelName());
         if (duplicate.isPresent()) {
             return duplicate.orElseThrow();
         }

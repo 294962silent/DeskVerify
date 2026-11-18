@@ -38,7 +38,11 @@ class KnowledgeIngestionServiceTest {
     @Test
     void adminCreatesDocumentAndIndexesChunksAsDraft() {
         when(repository.insertDocument(any(), any())).thenAnswer(invocation -> invocation.getArgument(1));
-        when(repository.findVersionByChecksum(any(), anyString(), anyString()))
+        when(repository.findVersionByChecksum(
+                        any(),
+                        anyString(),
+                        anyString(),
+                        eq(embeddings.modelName())))
                 .thenReturn(Optional.empty());
         when(repository.nextVersion(any(), anyString())).thenReturn(1);
         when(repository.insertVersion(any(), any())).thenAnswer(invocation -> invocation.getArgument(1));
@@ -104,7 +108,11 @@ class KnowledgeIngestionServiceTest {
                 "admin-1",
                 null);
         when(repository.findDocument(any(), eq("doc-1"))).thenReturn(Optional.of(document));
-        when(repository.findVersionByChecksum(any(), eq("doc-1"), anyString()))
+        when(repository.findVersionByChecksum(
+                        any(),
+                        eq("doc-1"),
+                        anyString(),
+                        eq(embeddings.modelName())))
                 .thenReturn(Optional.of(existing));
 
         KnowledgeDocumentVersion version = service.addVersion(
@@ -114,6 +122,11 @@ class KnowledgeIngestionServiceTest {
                 admin());
 
         assertThat(version).isEqualTo(existing);
+        verify(repository).findVersionByChecksum(
+                eq(new TenantId("tenant-a")),
+                eq("doc-1"),
+                anyString(),
+                eq(embeddings.modelName()));
         verify(repository, never()).nextVersion(any(), anyString());
         verify(repository, never()).insertVersion(any(), any());
     }

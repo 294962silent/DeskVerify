@@ -70,6 +70,11 @@ echomind:
     top-k: ${RAG_TOP_K:4}
     bm25-weight: ${RAG_BM25_WEIGHT:0.45}
     vector-weight: ${RAG_VECTOR_WEIGHT:0.55}
+    embedding-model: ${RAG_EMBEDDING_MODEL:bge-small-zh-v1.5-onnx-fp32}
+    embedding-model-path: ${RAG_EMBEDDING_MODEL_PATH:models/bge-small-zh-v1.5/model.onnx}
+    tokenizer-path: ${RAG_TOKENIZER_PATH:models/bge-small-zh-v1.5/tokenizer.json}
+    embedding-max-length: ${RAG_EMBEDDING_MAX_LENGTH:512}
+    onnx-intra-op-threads: ${RAG_ONNX_INTRA_OP_THREADS:4}
   storage:
     data-dir: ${ECHOMIND_DATA_DIR:data/java}
     knowledge-path: ${KNOWLEDGE_STORE_PATH:${ECHOMIND_DATA_DIR:data/java}/knowledge-store.json}

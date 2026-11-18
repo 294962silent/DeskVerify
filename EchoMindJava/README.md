@@ -4,7 +4,9 @@ EchoMind Java 是 Python 版 EchoMind 的 Java/Spring 技术栈重构版，目�
 
 
 
-当前版本已经覆盖智能客服主链路：对话请求、Redis 工作记忆、知识库检索、多 Agent 路由、Spring AI 模型调用、回答校验、评测、监控、Swagger 文档和 Docker 部署。
+当前版本已经覆盖智能客服主链路：对话请求、Redis 工作记忆、MySQL 版本化
+Hybrid RAG、多 Agent 路由、Spring AI 模型调用、回答校验、Commerce/工单业务域、
+评测、监控、Swagger 文档和 Docker 部署。
 
 ## 技术栈
 
@@ -14,10 +16,10 @@ EchoMind Java 是 Python 版 EchoMind 的 Java/Spring 技术栈重构版，目�
 | Web 框架 | Spring Boot 3.5 |
 | AI 框架 | Spring AI 1.1 |
 | LLM Provider | Anthropic、DeepSeek |
-| 文档处理 | LangChain4j DocumentSplitter |
+| 文档处理 | MarkdownAwareChunker、LangChain4j DocumentSplitter |
 | 记忆缓存 | Spring Data Redis |
-| RAG | BM25 + 本地 hash vector + LLM rerank |
-| 持久化 | Redis 工作记忆 + JSON 知识库/长期记忆/用户画像 |
+| RAG | MySQL ngram FULLTEXT + `bge-small-zh-v1.5` ONNX + RRF + rerank |
+| 持久化 | MySQL 租户业务/RAG + Redis 工作记忆 + JSON 长期记忆/用户画像 |
 | 监控 | Spring Boot Actuator、Micrometer、Prometheus |
 | API 文档 | Springdoc OpenAPI、Swagger UI |
 | 部署 | Docker、Docker Compose、Nginx、Prometheus |
@@ -28,7 +30,7 @@ EchoMind Java 是 Python 版 EchoMind 的 Java/Spring 技术栈重构版，目�
 ```text
 POST /chat
   -> MemoryManager 读取 Redis 工作记忆、会话摘要、长期记忆、用户画像
-  -> KnowledgeToolManager 做查询改写、并行召回、LLM rerank
+  -> 版本化 RAG 做词法/向量召回、RRF、rerank 和 citation assembly
   -> AgentOrchestrator 做意图识别和 Agent 路由
   -> General / Technical / Billing Agent 生成回复
   -> AnswerVerifier 校验回复是否可信、是否需要转人工
@@ -57,7 +59,7 @@ POST /chat
 | 工作记忆 | Redis | Redis | 已对齐 |
 | 情景记忆 | ChromaDB `episodic` collection | JSON 持久化 + 本地向量检索 | 功能对齐，存储不同 |
 | 用户画像 | ChromaDB `user_profile` collection | JSON 持久化 | 功能对齐，存储不同 |
-| 知识库 | ChromaDB `knowledge_base` collection | JSON 持久化 Hybrid RAG | 功能对齐，主检索实现不同 |
+| 知识库 | ChromaDB `knowledge_base` collection | MySQL 版本化 BGE Hybrid RAG | 功能对齐，主检索实现不同 |
 | 查询改写 | LLM 改写 | LLM 改写 | 已对齐 |
 | 检索重排 | LLM rerank | LLM rerank，失败回退融合分 | 已对齐 |
 | 工具框架 | 通用 MCPToolManager | 专用 KnowledgeToolManager | 部分对齐 |
@@ -108,8 +110,9 @@ Python 版：
 Java 版：
 
 - Redis 保存工作记忆。
+- MySQL 保存租户级知识文档、不可变版本、chunk、FULLTEXT 索引和 BGE 向量。
 - `data/java/memory-store.json` 保存情景记忆和用户画像。
-- `data/java/knowledge-store.json` 保存知识库片段。
+- `data/java/knowledge-store.json` 仅保留旧知识工具兼容路径。
 - Docker 中保存到 `/app/data/java`，由 `app-data` volume 持久化。
 
 配置项：
@@ -121,31 +124,49 @@ MEMORY_STORE_PATH=data/java/memory-store.json
 EVAL_BASELINE_PATH=data/eval/baseline.json
 ```
 
-当前用户可见效果已经对齐：应用重启后，导入的知识库、长期记忆和画像可以恢复。底层差异仍然存在：Java 没有直接写入 ChromaDB collection，而是 JSON 持久化 + 本地 hash vector 检索。
+应用重启后，导入的版本化知识文档、长期记忆和画像可以恢复。Java 没有直接写入
+ChromaDB collection；`/chat` 和 `/api/v1/knowledge/*` 使用 MySQL 租户数据与
+真实 `bge-small-zh-v1.5` FP32 ONNX embedding。
 
-### Hybrid RAG
+### Versioned Hybrid RAG
 
 Python 版知识库主要通过 ChromaDB 做语义检索。
 
-Java 版当前检索链路：
+Java 版 `/chat` 当前检索链路：
 
 ```text
-文档导入
-  -> LangChain4j recursive splitter
-  -> JSON 持久化
-  -> 本地 documents 索引
+文档版本
+  -> Markdown-aware chunking
+  -> BGE-small-zh-v1.5 FP32 ONNX CLS embedding
+  -> MySQL 不可变版本和 chunk
 
 查询
-  -> LLM 查询改写
-  -> 多子查询并行召回
-  -> BM25 关键词得分
-  -> 本地 hash vector 语义得分
-  -> 加权融合
-  -> LLM rerank
-  -> fallback 到融合分排序
+  -> MySQL ngram FULLTEXT 词法召回
+  -> BGE query embedding + 向量召回
+  -> Reciprocal Rank Fusion
+  -> deterministic rerank
+  -> 证据阈值
+  -> structured citations + degraded_modes
 ```
 
-这比 Python 版多了 BM25 + vector 融合检索，但没有把 ChromaDB 作为主召回源。
+版本 checksum 去重包含 embedding model，因此相同正文可以在模型升级后重新入库。
+旧模型活动版本不会参与新模型向量召回，而是明确返回
+`embedding_model_mismatch`；词法召回和 citation chain 继续工作。
+
+旧 hash 文档可通过租户管理员接口重复迁移和发布：
+
+```text
+POST /api/v1/knowledge/embedding-migrations
+```
+
+请求支持 `dry_run`、最大 500 的 `limit` 和 `after_document_id` 游标。流程逐文档锁定
+文档行和当前版本、校验源/目标 ACL 与 chunk 数、复用或创建当前 BGE 版本并发布；普通
+发布同样先锁文档行。成功重跑会返回
+`scanned=0`；失败条目不会阻塞同页后续文档，模型不可用返回
+`503 EMBEDDING_UNAVAILABLE`。
+
+迁移实验、实际失败与修复记录：
+[BGE ONNX 迁移实验记录](../docs/experiments/BGE_ONNX_MIGRATION.md)。
 
 ### 评测和监控
 
@@ -218,8 +239,9 @@ Java 版保留 ChromaDB 容器，并引入了 Spring AI Chroma VectorStore start
 
 原因：
 
-- DeepSeek Chat starter 不提供 EmbeddingModel。
-- 当前实现优先保证 DeepSeek / Anthropic 都能启动和运行。
+- 版本化 RAG 使用独立、可版本化的 ONNX embedding，不依赖 Chat Provider 自带
+  EmbeddingModel。
+- 当前实现优先保证 DeepSeek / Anthropic profile 都能与相同检索链路运行。
 
 后续可增强为：
 
@@ -318,6 +340,13 @@ Java 版配置了 Jackson `SNAKE_CASE`，响应字段会输出为：
 
 - JDK 21 或更高版本
 - Docker Desktop 或 Docker Engine
+- PowerShell 7（用于模型下载脚本）
+
+先在 `EchoMindJava` 目录准备 BGE ONNX 模型：
+
+```powershell
+pwsh -File scripts/download-bge-small-zh-v1.5.ps1
+```
 
 启动依赖：
 
@@ -354,6 +383,22 @@ http://localhost:8080/docs
 ```
 
 ### Windows PowerShell
+
+先下载并校验模型：
+
+```powershell
+.\scripts\download-bge-small-zh-v1.5.ps1
+```
+
+默认配置会读取：
+
+```text
+models/bge-small-zh-v1.5/model.onnx
+models/bge-small-zh-v1.5/tokenizer.json
+```
+
+模型约 95 MB，被 `.gitignore` 忽略。缺失时会进入 lexical-only 降级，并返回
+`embedding_unavailable` / `vector_unavailable`。
 
 启动依赖：
 
@@ -404,6 +449,12 @@ Copy-Item .env.example .env
 ```
 
 编辑 `.env`，选择模型 profile 并填写对应 API Key。
+
+Docker 构建会把本地 BGE 模型复制进镜像；构建前必须执行：
+
+```powershell
+.\scripts\download-bge-small-zh-v1.5.ps1
+```
 
 启动：
 

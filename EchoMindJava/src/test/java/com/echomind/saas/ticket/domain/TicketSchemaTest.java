@@ -28,7 +28,7 @@ class TicketSchemaTest {
         migrate();
 
         try (Connection connection = connect()) {
-            assertThat(latestVersion(connection)).isEqualTo("10");
+            assertThat(latestVersion(connection)).isEqualTo("11");
             assertThat(tableNames(connection)).contains("ticket", "ticket_event");
             assertThat(columnNames(connection, "ticket")).contains(
                     "tenant_id",
@@ -95,6 +95,15 @@ class TicketSchemaTest {
                     .containsExactly("tenant_id", "customer_id", "created_at");
             assertThat(indexColumns(connection, "ticket_event", "idx_ticket_event_ticket_created"))
                     .containsExactly("tenant_id", "ticket_id", "created_at");
+            assertThat(indexColumns(
+                            connection,
+                            "knowledge_document_version",
+                            "uk_knowledge_version_checksum_model"))
+                    .containsExactly(
+                            "tenant_id",
+                            "document_id",
+                            "source_checksum",
+                            "embedding_model");
         }
     }
 

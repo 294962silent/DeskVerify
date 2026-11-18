@@ -1,7 +1,9 @@
 package com.echomind.saas.rag.infrastructure;
 
 import com.echomind.saas.identity.domain.TenantId;
+import com.echomind.saas.rag.application.KnowledgeChunkAclSummary;
 import com.echomind.saas.rag.application.KnowledgeDocumentRepository;
+import com.echomind.saas.rag.application.KnowledgeEmbeddingMigrationCandidate;
 import com.echomind.saas.rag.application.KnowledgeSearchScope;
 import com.echomind.saas.rag.application.LexicalSearchHit;
 import com.echomind.saas.rag.domain.KnowledgeChunk;
@@ -59,12 +61,21 @@ public class JdbcKnowledgeDocumentRepository implements KnowledgeDocumentReposit
                 select document_id, title, status, current_version, created_by_user_id
                 from knowledge_document
                 where tenant_id = ? and document_id = ?
-                """, (result, row) -> new KnowledgeDocument(
-                        result.getString("document_id"),
-                        result.getString("title"),
-                        result.getString("status"),
-                        (Integer) result.getObject("current_version"),
-                        result.getString("created_by_user_id")),
+                """, this::mapDocument,
+                tenantId.value(), documentId)
+                .stream()
+                .findFirst();
+    }
+
+    @Override
+    public Optional<KnowledgeDocument> findDocumentForUpdate(
+            TenantId tenantId, String documentId) {
+        return jdbc.query("""
+                select document_id, title, status, current_version, created_by_user_id
+                from knowledge_document
+                where tenant_id = ? and document_id = ?
+                for update
+                """, this::mapDocument,
                 tenantId.value(), documentId)
                 .stream()
                 .findFirst();
@@ -115,11 +126,17 @@ public class JdbcKnowledgeDocumentRepository implements KnowledgeDocumentReposit
 
     @Override
     public Optional<KnowledgeDocumentVersion> findVersionByChecksum(
-            TenantId tenantId, String documentId, String checksum) {
+            TenantId tenantId,
+            String documentId,
+            String checksum,
+            String embeddingModel) {
         return jdbc.query(VERSION_SELECT + """
-                where tenant_id = ? and document_id = ? and source_checksum = ?
+                where tenant_id = ?
+                  and document_id = ?
+                  and source_checksum = ?
+                  and embedding_model = ?
                 """, this::mapVersion,
-                tenantId.value(), documentId, checksum)
+                tenantId.value(), documentId, checksum, embeddingModel)
                 .stream()
                 .findFirst();
     }
@@ -131,6 +148,78 @@ public class JdbcKnowledgeDocumentRepository implements KnowledgeDocumentReposit
                 where tenant_id = ? and document_id = ?
                 order by version_number desc
                 """, this::mapVersion, tenantId.value(), documentId);
+    }
+
+    @Override
+    public List<KnowledgeEmbeddingMigrationCandidate> staleEmbeddingCandidates(
+            TenantId tenantId,
+            String embeddingModel,
+            String afterDocumentId,
+            int limit) {
+        List<Object> arguments = new ArrayList<>();
+        arguments.add(tenantId.value());
+        arguments.add(embeddingModel);
+        String cursor = "";
+        if (afterDocumentId != null) {
+            cursor = " and v.document_id > ?";
+            arguments.add(afterDocumentId);
+        }
+        arguments.add(limit);
+        return jdbc.query("""
+                select v.document_id, v.version_number, v.embedding_model
+                from knowledge_document_version v
+                join knowledge_document d
+                  on d.tenant_id = v.tenant_id
+                 and d.document_id = v.document_id
+                 and d.current_version = v.version_number
+                 and d.status = 'ACTIVE'
+                where v.tenant_id = ?
+                  and v.status = 'PUBLISHED'
+                  and v.embedding_model <> ?%s
+                order by v.document_id
+                limit ?
+                """.formatted(cursor),
+                (result, row) -> new KnowledgeEmbeddingMigrationCandidate(
+                        result.getString("document_id"),
+                        result.getInt("version_number"),
+                        result.getString("embedding_model")),
+                arguments.toArray());
+    }
+
+    @Override
+    public long countStalePublishedVersions(
+            TenantId tenantId, String embeddingModel) {
+        Long count = jdbc.queryForObject("""
+                select count(*)
+                from knowledge_document_version v
+                join knowledge_document d
+                  on d.tenant_id = v.tenant_id
+                 and d.document_id = v.document_id
+                 and d.current_version = v.version_number
+                 and d.status = 'ACTIVE'
+                where v.tenant_id = ?
+                  and v.status = 'PUBLISHED'
+                  and v.embedding_model <> ?
+                """, Long.class, tenantId.value(), embeddingModel);
+        return count == null ? 0 : count;
+    }
+
+    @Override
+    public List<KnowledgeChunkAclSummary> versionChunkAclSummaries(
+            TenantId tenantId, String documentId, int versionNumber) {
+        return jdbc.query("""
+                select visibility, customer_id, count(*) as chunk_count
+                from knowledge_chunk
+                where tenant_id = ?
+                  and document_id = ?
+                  and version_number = ?
+                group by visibility, customer_id
+                order by visibility, customer_id
+                """, (result, row) -> new KnowledgeChunkAclSummary(
+                        KnowledgeVisibility.valueOf(result.getString("visibility")),
+                        result.getString("customer_id"),
+                        Math.toIntExact(result.getLong("chunk_count"))),
+                tenantId.value(), documentId, versionNumber);
     }
 
     @Override
@@ -207,6 +296,9 @@ public class JdbcKnowledgeDocumentRepository implements KnowledgeDocumentReposit
             int versionNumber,
             int expectedChunkCount,
             String embeddingModel) {
+        findDocumentForUpdate(tenantId, documentId)
+                .orElseThrow(() -> new IllegalStateException(
+                        "knowledge document not found"));
         KnowledgeDocumentVersion version = jdbc.query(VERSION_SELECT + """
                 where tenant_id = ? and document_id = ? and version_number = ?
                 for update
@@ -296,9 +388,11 @@ public class JdbcKnowledgeDocumentRepository implements KnowledgeDocumentReposit
     }
 
     @Override
-    public List<KnowledgeChunk> activeChunks(KnowledgeSearchScope scope) {
+    public List<KnowledgeChunk> activeChunks(
+            KnowledgeSearchScope scope, String embeddingModel) {
         List<Object> arguments = new ArrayList<>();
         arguments.add(scope.tenantId().value());
+        arguments.add(embeddingModel);
         String acl = aclClause("c", scope, arguments);
         return jdbc.query("""
                 select c.chunk_id, c.document_id, c.version_number, c.chunk_index,
@@ -315,11 +409,39 @@ public class JdbcKnowledgeDocumentRepository implements KnowledgeDocumentReposit
                  and v.document_id = c.document_id
                  and v.version_number = c.version_number
                  and v.status = 'PUBLISHED'
-                where c.tenant_id = ?%s
+                where c.tenant_id = ?
+                  and v.embedding_model = ?%s
                 """.formatted(acl)
                         + " order by c.document_id, c.chunk_index",
                 (result, row) -> mapChunk(result),
                 arguments.toArray());
+    }
+
+    @Override
+    public long countActiveChunksWithOtherEmbeddingModel(
+            KnowledgeSearchScope scope, String embeddingModel) {
+        List<Object> arguments = new ArrayList<>();
+        arguments.add(scope.tenantId().value());
+        arguments.add(embeddingModel);
+        String acl = aclClause("c", scope, arguments);
+        Long count = jdbc.queryForObject("""
+                select count(*)
+                from knowledge_chunk c
+                join knowledge_document d
+                  on d.tenant_id = c.tenant_id and d.document_id = c.document_id
+                 and d.current_version = c.version_number
+                 and d.status = 'ACTIVE'
+                join knowledge_document_version v
+                  on v.tenant_id = c.tenant_id
+                 and v.document_id = c.document_id
+                 and v.version_number = c.version_number
+                 and v.status = 'PUBLISHED'
+                where c.tenant_id = ?
+                  and v.embedding_model <> ?%s
+                """.formatted(acl),
+                Long.class,
+                arguments.toArray());
+        return count == null ? 0 : count;
     }
 
     @Override
@@ -352,6 +474,15 @@ public class JdbcKnowledgeDocumentRepository implements KnowledgeDocumentReposit
                 result.getString("embedding_model"),
                 result.getString("created_by_user_id"),
                 instant(result.getTimestamp("published_at")));
+    }
+
+    private KnowledgeDocument mapDocument(ResultSet result, int row) throws SQLException {
+        return new KnowledgeDocument(
+                result.getString("document_id"),
+                result.getString("title"),
+                result.getString("status"),
+                (Integer) result.getObject("current_version"),
+                result.getString("created_by_user_id"));
     }
 
     private KnowledgeChunk mapChunk(ResultSet result) throws SQLException {
@@ -437,4 +568,5 @@ public class JdbcKnowledgeDocumentRepository implements KnowledgeDocumentReposit
                    created_by_user_id, published_at
             from knowledge_document_version
             """;
+
 }

@@ -11,6 +11,12 @@ import com.echomind.saas.identity.domain.TenantId;
 import com.echomind.saas.identity.security.SaasSecurityConfiguration;
 import com.echomind.saas.rag.application.CreateKnowledgeDocumentCommand;
 import com.echomind.saas.rag.application.KnowledgeDocumentView;
+import com.echomind.saas.rag.application.KnowledgeEmbeddingMigrationCommand;
+import com.echomind.saas.rag.application.KnowledgeEmbeddingMigrationItem;
+import com.echomind.saas.rag.application.KnowledgeEmbeddingMigrationResult;
+import com.echomind.saas.rag.application.KnowledgeEmbeddingMigrationService;
+import com.echomind.saas.rag.application.KnowledgeEmbeddingMigrationStatus;
+import com.echomind.saas.rag.application.EmbeddingUnavailableException;
 import com.echomind.saas.rag.application.KnowledgeIngestionService;
 import com.echomind.saas.rag.application.KnowledgeRetrieval;
 import com.echomind.saas.rag.domain.KnowledgeChunk;
@@ -78,6 +84,9 @@ class KnowledgeRagControllerTest {
     @MockitoBean
     private KnowledgeRetrieval retrieval;
 
+    @MockitoBean
+    private KnowledgeEmbeddingMigrationService embeddingMigration;
+
     @Test
     void adminCreatesDraftDocumentWithInitialIndexedVersion() throws Exception {
         KnowledgeDocument document = new KnowledgeDocument(
@@ -136,7 +145,85 @@ class KnowledgeRagControllerTest {
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
 
-        verifyNoInteractions(ingestion, retrieval);
+        mvc.perform(post("/api/v1/knowledge/embedding-migrations")
+                        .header("Authorization", "Bearer " + token("customer-1", "tenant-a"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "dry_run": true
+                                }
+                                """))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
+
+        verifyNoInteractions(ingestion, retrieval, embeddingMigration);
+    }
+
+    @Test
+    void adminStartsRepeatableEmbeddingMigrationPage() throws Exception {
+        when(embeddingMigration.migrate(any(), any())).thenReturn(
+                new KnowledgeEmbeddingMigrationResult(
+                        false,
+                        "bge-small-zh-v1.5-onnx-fp32",
+                        1,
+                        0,
+                        1,
+                        0,
+                        0,
+                        2,
+                        "doc-1",
+                        8,
+                        List.of(new KnowledgeEmbeddingMigrationItem(
+                                "doc-1",
+                                1,
+                                "local-hash-char-ngram-v1",
+                                2,
+                                KnowledgeEmbeddingMigrationStatus.MIGRATED,
+                                "reindexed and published"))));
+
+        mvc.perform(post("/api/v1/knowledge/embedding-migrations")
+                        .header("Authorization", "Bearer " + token("admin-1", "tenant-a"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "dry_run": false,
+                                  "limit": 1,
+                                  "after_document_id": "doc-0"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.dry_run").value(false))
+                .andExpect(jsonPath("$.target_embedding_model")
+                        .value("bge-small-zh-v1.5-onnx-fp32"))
+                .andExpect(jsonPath("$.migrated").value(1))
+                .andExpect(jsonPath("$.remaining").value(2))
+                .andExpect(jsonPath("$.next_after_document_id").value("doc-1"))
+                .andExpect(jsonPath("$.items[0].source_embedding_model")
+                        .value("local-hash-char-ngram-v1"))
+                .andExpect(jsonPath("$.items[0].target_version_number").value(2))
+                .andExpect(jsonPath("$.items[0].status").value("MIGRATED"));
+
+        ArgumentCaptor<KnowledgeEmbeddingMigrationCommand> command =
+                ArgumentCaptor.forClass(KnowledgeEmbeddingMigrationCommand.class);
+        verify(embeddingMigration).migrate(command.capture(), any());
+        assertThat(command.getValue().dryRun()).isFalse();
+        assertThat(command.getValue().limit()).isEqualTo(1);
+        assertThat(command.getValue().afterDocumentId()).isEqualTo("doc-0");
+    }
+
+    @Test
+    void embeddingMigrationReturnsServiceUnavailableWhenModelIsMissing()
+            throws Exception {
+        when(embeddingMigration.migrate(any(), any())).thenThrow(
+                new EmbeddingUnavailableException("model missing"));
+
+        mvc.perform(post("/api/v1/knowledge/embedding-migrations")
+                        .header("Authorization", "Bearer " + token("admin-1", "tenant-a"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("EMBEDDING_UNAVAILABLE"))
+                .andExpect(jsonPath("$.retryable").value(true));
     }
 
     @Test

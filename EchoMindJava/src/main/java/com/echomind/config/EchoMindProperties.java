@@ -92,6 +92,14 @@ public class EchoMindProperties {
         private int topK = 4;
         private double bm25Weight = 0.45;
         private double vectorWeight = 0.55;
+        private String embeddingModel = "bge-small-zh-v1.5-onnx-fp32";
+        private String embeddingModelPath =
+                "models/bge-small-zh-v1.5/model.onnx";
+        private String tokenizerPath =
+                "models/bge-small-zh-v1.5/tokenizer.json";
+        private int embeddingMaxLength = 512;
+        private int onnxIntraOpThreads =
+                Math.max(1, Math.min(4, Runtime.getRuntime().availableProcessors()));
 
         public int getTopK() {
             return topK;
@@ -115,6 +123,46 @@ public class EchoMindProperties {
 
         public void setVectorWeight(double vectorWeight) {
             this.vectorWeight = vectorWeight;
+        }
+
+        public String getEmbeddingModel() {
+            return embeddingModel;
+        }
+
+        public void setEmbeddingModel(String embeddingModel) {
+            this.embeddingModel = embeddingModel;
+        }
+
+        public String getEmbeddingModelPath() {
+            return embeddingModelPath;
+        }
+
+        public void setEmbeddingModelPath(String embeddingModelPath) {
+            this.embeddingModelPath = embeddingModelPath;
+        }
+
+        public String getTokenizerPath() {
+            return tokenizerPath;
+        }
+
+        public void setTokenizerPath(String tokenizerPath) {
+            this.tokenizerPath = tokenizerPath;
+        }
+
+        public int getEmbeddingMaxLength() {
+            return embeddingMaxLength;
+        }
+
+        public void setEmbeddingMaxLength(int embeddingMaxLength) {
+            this.embeddingMaxLength = embeddingMaxLength;
+        }
+
+        public int getOnnxIntraOpThreads() {
+            return onnxIntraOpThreads;
+        }
+
+        public void setOnnxIntraOpThreads(int onnxIntraOpThreads) {
+            this.onnxIntraOpThreads = onnxIntraOpThreads;
         }
     }
 
