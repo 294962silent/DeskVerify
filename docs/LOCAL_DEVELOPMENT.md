@@ -75,20 +75,22 @@ $bytes = New-Object byte[] 32
 
 ## Commerce Demo Profile
 
-`demo` profile 会在启动时执行常规 Flyway 迁移，再执行确定性的 Commerce 演示数据迁移：
+`demo` profile 需要与实际的模型 profile 组合启动。`anthropic,demo` 会在启动时执行常规 Flyway 迁移，再从 demo 目录加载确定性的 Commerce 演示数据迁移：
 
 ```text
 classpath:db/migration
-classpath:db/demo/V100__commerce_demo.sql
+classpath:db/demo
 ```
 
 设置数据库环境变量和上面的 JWT HMAC secret 后，从后端目录启动：
 
 ```powershell
 cd E:\EchoMind\echomind-saas-agent\EchoMindJava
-$env:SPRING_PROFILES_ACTIVE = "demo"
+$env:SPRING_PROFILES_ACTIVE = "anthropic,demo"
 .\mvnw.cmd spring-boot:run
 ```
+
+也可以使用 `deepseek,demo`；必须保留第二个 profile 作为 `demo`，否则不会加载 V100 演示数据。
 
 Demo 数据包含三个租户，每个租户有两个 customer account，并配有活跃订阅、套餐与 entitlement、订单、已支付/逾期发票及失败支付尝试。两个 customer ID 在所有租户中重复使用，用于验证读取始终按租户隔离。
 

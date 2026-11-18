@@ -1,5 +1,6 @@
 package com.echomind.saas.commerce;
 
+import com.echomind.EchoMindJavaApplication;
 import com.echomind.saas.commerce.domain.CommercialSnapshot;
 import com.echomind.saas.commerce.domain.CustomerId;
 import com.echomind.saas.commerce.infrastructure.JdbcCommerceReadRepository;
@@ -12,11 +13,10 @@ import java.util.List;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
+import org.springframework.boot.test.autoconfigure.actuate.observability.AutoConfigureObservability;
 import org.springframework.boot.autoconfigure.flyway.FlywayProperties;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Import;
+import org.springframework.core.env.Environment;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -28,11 +28,15 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest(
-        classes = CommerceDemoProfileIntegrationTest.TestApplication.class,
-        webEnvironment = SpringBootTest.WebEnvironment.NONE)
-@ActiveProfiles("demo")
+        classes = EchoMindJavaApplication.class,
+        webEnvironment = SpringBootTest.WebEnvironment.MOCK)
+@AutoConfigureObservability
+@ActiveProfiles({"anthropic", "demo"})
 @Testcontainers(disabledWithoutDocker = true)
 class CommerceDemoProfileIntegrationTest {
+
+    private static final String TEST_JWT_SECRET =
+            "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
 
     @Container
     static final MySQLContainer<?> MYSQL = MySqlTestContainers.create();
@@ -42,14 +46,14 @@ class CommerceDemoProfileIntegrationTest {
         registry.add("spring.datasource.url", MYSQL::getJdbcUrl);
         registry.add("spring.datasource.username", MYSQL::getUsername);
         registry.add("spring.datasource.password", MYSQL::getPassword);
-        registry.add("spring.autoconfigure.exclude", () -> String.join(",",
-                "org.springframework.ai.model.anthropic.autoconfigure.AnthropicChatAutoConfiguration",
-                "org.springframework.ai.model.deepseek.autoconfigure.DeepSeekChatAutoConfiguration",
-                "org.springframework.ai.vectorstore.chroma.autoconfigure.ChromaVectorStoreAutoConfiguration",
-                "org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration",
-                "org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration",
-                "org.springframework.boot.actuate.autoconfigure.metrics.MetricsAutoConfiguration",
-                "org.springframework.boot.actuate.autoconfigure.metrics.export.simple.SimpleMetricsExportAutoConfiguration"));
+        registry.add("spring.ai.anthropic.api-key", () -> "test-placeholder");
+        registry.add("echomind.security.jwt.hmac-secret", () -> TEST_JWT_SECRET);
+        registry.add("echomind.storage.data-dir", () -> "target/commerce-demo/data");
+        registry.add("echomind.storage.knowledge-path", () -> "target/commerce-demo/data/knowledge.json");
+        registry.add("echomind.storage.memory-path", () -> "target/commerce-demo/data/memory.json");
+        registry.add("echomind.eval.jobs-path", () -> "target/commerce-demo/data/eval-jobs.json");
+        registry.add("echomind.skills.root-dir", () -> "target/commerce-demo/skills");
+        registry.add("management.health.redis.enabled", () -> "false");
     }
 
     @Autowired
@@ -67,8 +71,12 @@ class CommerceDemoProfileIntegrationTest {
     @Autowired
     private JdbcTemplate jdbc;
 
+    @Autowired
+    private Environment environment;
+
     @Test
     void demoProfileLoadsCompleteTenantScopedSnapshots() {
+        assertThat(environment.getActiveProfiles()).contains("anthropic", "demo");
         assertThat(flywayProperties.getLocations())
                 .containsExactly("classpath:db/migration", "classpath:db/demo");
         assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("100");
@@ -91,7 +99,11 @@ class CommerceDemoProfileIntegrationTest {
                     assertThat(subscription.subscriptionId()).startsWith(tenant + "-");
                 });
                 assertThat(snapshot.invoices()).isNotEmpty();
-                assertThat(snapshot.paymentAttempts()).anySatisfy(attempt -> {
+                assertThat(snapshot.invoices()).allSatisfy(invoice ->
+                        assertThat(invoice.invoiceId()).startsWith(tenant + "-"));
+                assertThat(snapshot.paymentAttempts()).isNotEmpty();
+                assertThat(snapshot.paymentAttempts()).allSatisfy(attempt -> {
+                    assertThat(attempt.paymentAttemptId()).startsWith(tenant + "-");
                     assertThat(attempt.status()).isEqualTo("FAILED");
                     assertThat(attempt.failureCode()).isNotBlank();
                 });
@@ -143,11 +155,5 @@ class CommerceDemoProfileIntegrationTest {
                         tenantId))
                 .isEqualTo(2);
         assertMembership(tenantId, userId);
-    }
-
-    @Configuration(proxyBeanMethods = false)
-    @EnableAutoConfiguration
-    @Import({JdbcCommerceReadRepository.class, JdbcTenantMembershipRepository.class})
-    static class TestApplication {
     }
 }
