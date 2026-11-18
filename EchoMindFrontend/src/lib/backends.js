@@ -1,5 +1,9 @@
 import { authorizedFetch } from './auth.js'
 import { normalizeChatRagFields } from './rag.js'
+import {
+  buildGoldenRagEvaluationRequest,
+  DEFAULT_GOLDEN_DATASET,
+} from './goldenEvaluation.js'
 
 export class BackendRequestError extends Error {
   constructor(response, data) {
@@ -87,6 +91,34 @@ export async function requestEvaluationJob(type, settings, jobId) {
 
 export async function requestEvaluationJobs(type, settings, limit = 1) {
   return requestJson(type, backendMeta(type, settings).baseUrl, `/eval/jobs?limit=${encodeURIComponent(limit)}`)
+}
+
+export async function startGoldenRagEvaluation(
+  type,
+  settings,
+  datasetVersion = DEFAULT_GOLDEN_DATASET,
+) {
+  return requestJson(
+    type,
+    backendMeta(type, settings).baseUrl,
+    '/eval/golden-rag/jobs',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(buildGoldenRagEvaluationRequest(datasetVersion)),
+    },
+  )
+}
+
+export async function requestGoldenRagMarkdown(type, settings, jobId) {
+  const url = `${normalizeBaseUrl(backendMeta(type, settings).baseUrl)}` +
+    `/eval/jobs/${encodeURIComponent(jobId)}/report.md`
+  const response = await authorizedFetch(url, type, {})
+  const text = await response.text()
+  if (!response.ok) {
+    throw new BackendRequestError(response, text)
+  }
+  return text
 }
 
 export async function requestSearch(type, settings, query, topK = 5) {
