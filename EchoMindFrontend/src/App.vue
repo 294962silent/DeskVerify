@@ -237,7 +237,15 @@
         <div class="count-display"><strong>{{ knowledgeCount }}</strong><span>chunks</span></div>
       </div>
 
-      <div class="knowledge-layout">
+      <RagPanel
+        v-if="settings.backend === 'java'"
+        :settings="settings"
+        :access-token="accessToken"
+        :roles="ticketRoles"
+        :customer-id="ticketCustomerId"
+      />
+
+      <div v-else class="knowledge-layout">
         <section class="workspace-card search-workspace">
           <div class="card-heading">
             <div><span class="kicker">Retrieval</span><h2>检索知识</h2></div>
@@ -357,6 +365,7 @@ import {
 import { getAccessToken, saveAccessToken } from './lib/auth.js'
 import { resolveSessionCustomerId, resolveSessionRoles } from './lib/tickets.js'
 import TicketPanel from './components/TicketPanel.vue'
+import RagPanel from './components/RagPanel.vue'
 
 const settings = reactive(createInitialSettings())
 const accessToken = ref(getAccessToken())

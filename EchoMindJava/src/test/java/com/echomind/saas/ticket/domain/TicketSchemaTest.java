@@ -28,7 +28,7 @@ class TicketSchemaTest {
         migrate();
 
         try (Connection connection = connect()) {
-            assertThat(latestVersion(connection)).isEqualTo("9");
+            assertThat(latestVersion(connection)).isEqualTo("10");
             assertThat(tableNames(connection)).contains("ticket", "ticket_event");
             assertThat(columnNames(connection, "ticket")).contains(
                     "tenant_id",

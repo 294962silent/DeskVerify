@@ -137,6 +137,33 @@ VITE_ECHOMIND_CUSTOMER_ID=customer-001
 
 完整工单链路包括创建、认领、解决、关闭和重开；每次状态变化都写不可变 `ticket_event` 和 transactional outbox。Ticket E2E 测试使用真实 Spring context、JWT 和 MySQL 8.4。
 
+## Versioned RAG
+
+V10 增加租户级知识文档、不可变版本和 chunk 表。Java API：
+
+```text
+POST /api/v1/knowledge-documents
+POST /api/v1/knowledge-documents/{documentId}/versions
+POST /api/v1/knowledge-documents/{documentId}/publish
+GET  /api/v1/knowledge-documents/{documentId}/versions
+POST /api/v1/knowledge/search
+GET  /api/v1/knowledge/stats
+```
+
+只有 `TENANT_ADMIN` 可以创建版本和发布。新版本先在 `DRAFT` 状态完成切片和索引，发布时才原子切换 `current_version`，旧版本随后变为 `RETIRED`。相同文档的相同标准化 checksum 不会重复创建版本。
+
+检索先按 JWT actor 的租户和 customer membership 过滤，再并行执行：
+
+1. MySQL ngram FULLTEXT 词法召回。
+2. 本地 384 维字符 n-gram 哈希向量召回。
+3. Reciprocal Rank Fusion。
+4. 可替换 `Reranker` port 的确定性 cross-feature rerank。
+5. 证据阈值与 citation assembly。
+
+当前默认 embedding 是确定性的本地 fallback，不是 `bge-small-zh-v1.5` 真实模型；接口已通过 `EmbeddingProvider` 隔离，后续可替换 ONNX adapter。词法或向量任一路失败时，响应会返回 `degraded_modes`，不会把降级结果伪装成全链路成功。
+
+Citation 包含 chunk ID、document ID、标题、版本、section/heading path、字符范围、摘录和分数。检索与发布 E2E 使用真实 Spring context、JWT 和 MySQL 8.4。
+
 ## Frontend
 
 ```powershell
