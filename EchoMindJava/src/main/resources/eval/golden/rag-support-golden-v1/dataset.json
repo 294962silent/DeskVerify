@@ -1,0 +1,863 @@
+{
+  "dataset_version": "rag-support-golden-v1",
+  "schema_version": 1,
+  "tenant_id": "tenant-golden-v1",
+  "provenance": {
+    "kind": "synthetic",
+    "human_reviewed": false,
+    "statistically_representative": false,
+    "external_llm_tokens": 0
+  },
+  "documents": [
+    {
+      "document_id": "golden-doc-plan-entitlements",
+      "title": "套餐与席位",
+      "version": 1,
+      "visibility": "TENANT",
+      "customer_id": null,
+      "normalized_content_sha256": "d4e2077b7baa3902e7f18af24d0672c1beb3549d655cd2f84eba0d05954c764c",
+      "content": "# 套餐与席位\n\n企业版套餐包含二十个席位，支持单点登录和审计日志。新增席位在付款后立即生效。",
+      "expected_chunks": [
+        {
+          "chunk_index": 0,
+          "chunk_id": "chunk-4140c49c079d27ce23efc2afb08fe130",
+          "checksum": "d4e2077b7baa3902e7f18af24d0672c1beb3549d655cd2f84eba0d05954c764c",
+          "section_title": "套餐与席位",
+          "heading_path": "套餐与席位"
+        }
+      ]
+    },
+    {
+      "document_id": "golden-doc-refund-policy",
+      "title": "退款政策",
+      "version": 1,
+      "visibility": "TENANT",
+      "customer_id": null,
+      "normalized_content_sha256": "25fbfa37e43b133f5fbd90bc2bacb47b703c40b8affb8003a8532bc146846a7b",
+      "content": "# 退款政策\n\n标准订阅退款申请需在购买后七个自然日内提交。已使用超过二十个席位的订单需要人工审核。",
+      "expected_chunks": [
+        {
+          "chunk_index": 0,
+          "chunk_id": "chunk-2e8259f26c55c93d5de365509f7b4eab",
+          "checksum": "25fbfa37e43b133f5fbd90bc2bacb47b703c40b8affb8003a8532bc146846a7b",
+          "section_title": "退款政策",
+          "heading_path": "退款政策"
+        }
+      ]
+    },
+    {
+      "document_id": "golden-doc-subscription-renewal",
+      "title": "自动续费",
+      "version": 1,
+      "visibility": "TENANT",
+      "customer_id": null,
+      "normalized_content_sha256": "87fb47aa0cc937e478c1a3078fe46977b90cf86dfd08140e81e8c366962e00f4",
+      "content": "# 自动续费\n\n订阅默认在到期前二十四小时自动续费。关闭自动续费后，当前服务周期仍保持有效直到到期。",
+      "expected_chunks": [
+        {
+          "chunk_index": 0,
+          "chunk_id": "chunk-ca79df18c32afe7d48584555dfbc8d21",
+          "checksum": "87fb47aa0cc937e478c1a3078fe46977b90cf86dfd08140e81e8c366962e00f4",
+          "section_title": "自动续费",
+          "heading_path": "自动续费"
+        }
+      ]
+    },
+    {
+      "document_id": "golden-doc-invoice-request",
+      "title": "发票申请",
+      "version": 1,
+      "visibility": "TENANT",
+      "customer_id": null,
+      "normalized_content_sha256": "eddc8edb3227786bfe88cc001323690027a0a2e665b69cabc0d40c78425dd29f",
+      "content": "# 发票申请\n\n企业客户可以在账单页面申请增值税专用发票。发票抬头必须与认证主体一致。",
+      "expected_chunks": [
+        {
+          "chunk_index": 0,
+          "chunk_id": "chunk-a745c16b5bac07e821562a022410b6bb",
+          "checksum": "eddc8edb3227786bfe88cc001323690027a0a2e665b69cabc0d40c78425dd29f",
+          "section_title": "发票申请",
+          "heading_path": "发票申请"
+        }
+      ]
+    },
+    {
+      "document_id": "golden-doc-payment-failure",
+      "title": "支付失败",
+      "version": 1,
+      "visibility": "TENANT",
+      "customer_id": null,
+      "normalized_content_sha256": "695bafdb89bc250451af523c590253e77141c9e5b9723c50ecaf10ecfa8ea748",
+      "content": "# 支付失败\n\n支付失败时系统会保留订单十五分钟。请先确认银行卡限额，不要重复提交超过三次。",
+      "expected_chunks": [
+        {
+          "chunk_index": 0,
+          "chunk_id": "chunk-ed4722bdd7e71b797c515fcc630bb31c",
+          "checksum": "695bafdb89bc250451af523c590253e77141c9e5b9723c50ecaf10ecfa8ea748",
+          "section_title": "支付失败",
+          "heading_path": "支付失败"
+        }
+      ]
+    },
+    {
+      "document_id": "golden-doc-sso-login",
+      "title": "SSO 登录",
+      "version": 1,
+      "visibility": "TENANT",
+      "customer_id": null,
+      "normalized_content_sha256": "75c662ef8a394ed36a1d070c0e069448abf9af3f86bc2f67f8835f14e4db1129",
+      "content": "# SSO 登录\n\n企业单点登录要求管理员在身份平台配置 ACS 地址和 Entity ID。普通成员不能修改 SSO 配置。",
+      "expected_chunks": [
+        {
+          "chunk_index": 0,
+          "chunk_id": "chunk-a2efa3d93235b6c11de9083fffaf7629",
+          "checksum": "75c662ef8a394ed36a1d070c0e069448abf9af3f86bc2f67f8835f14e4db1129",
+          "section_title": "SSO 登录",
+          "heading_path": "SSO 登录"
+        }
+      ]
+    },
+    {
+      "document_id": "golden-doc-api-rate-limit",
+      "title": "API 限流",
+      "version": 1,
+      "visibility": "TENANT",
+      "customer_id": null,
+      "normalized_content_sha256": "aea1b6007ee83f0659e47aadda88fde679bb1070fd511e844cd9b2d68d4e907e",
+      "content": "# API 限流\n\n生产环境默认每个租户每分钟六千次请求。超过限制会返回 HTTP 429，并建议使用指数退避重试。",
+      "expected_chunks": [
+        {
+          "chunk_index": 0,
+          "chunk_id": "chunk-64b420da41a2288d2e18dc723c3f3535",
+          "checksum": "aea1b6007ee83f0659e47aadda88fde679bb1070fd511e844cd9b2d68d4e907e",
+          "section_title": "API 限流",
+          "heading_path": "API 限流"
+        }
+      ]
+    },
+    {
+      "document_id": "golden-doc-account-security",
+      "title": "账号安全",
+      "version": 1,
+      "visibility": "TENANT",
+      "customer_id": null,
+      "normalized_content_sha256": "4bd597be5d9f3d48bad876e6daae7e6d3fd0b142da6ffae799e5a29d4af14555",
+      "content": "# 账号安全\n\n怀疑账号被盗时应立即重置密码、撤销活跃会话并联系支持团队。不要通过聊天提供完整密码或验证码。",
+      "expected_chunks": [
+        {
+          "chunk_index": 0,
+          "chunk_id": "chunk-ba5ad186998a5b74a782c8b1622b2b8a",
+          "checksum": "4bd597be5d9f3d48bad876e6daae7e6d3fd0b142da6ffae799e5a29d4af14555",
+          "section_title": "账号安全",
+          "heading_path": "账号安全"
+        }
+      ]
+    },
+    {
+      "document_id": "golden-doc-ticket-sla",
+      "title": "工单 SLA",
+      "version": 1,
+      "visibility": "TENANT",
+      "customer_id": null,
+      "normalized_content_sha256": "0d9a57e48eab9ceeb2c73e604d047b62296ab0930bd07483a9fe1307b78fe5ed",
+      "content": "# 工单 SLA\n\n紧急工单在三十分钟内响应，高优工单在两小时内响应。响应时间不代表问题解决时间。",
+      "expected_chunks": [
+        {
+          "chunk_index": 0,
+          "chunk_id": "chunk-0c362621b671df06f476b6774d79bc53",
+          "checksum": "0d9a57e48eab9ceeb2c73e604d047b62296ab0930bd07483a9fe1307b78fe5ed",
+          "section_title": "工单 SLA",
+          "heading_path": "工单 SLA"
+        }
+      ]
+    },
+    {
+      "document_id": "golden-doc-data-export",
+      "title": "数据导出",
+      "version": 1,
+      "visibility": "TENANT",
+      "customer_id": null,
+      "normalized_content_sha256": "bc1880c7a7d8e1c2a2951e0978384926e7b91144bff6174392abf63d47ca96f3",
+      "content": "# 数据导出\n\n租户管理员可以每二十四小时申请一次数据导出。导出文件包含订单、订阅和工单数据，不含用户密码。",
+      "expected_chunks": [
+        {
+          "chunk_index": 0,
+          "chunk_id": "chunk-d46df2d40428faab776f65e3f952511c",
+          "checksum": "bc1880c7a7d8e1c2a2951e0978384926e7b91144bff6174392abf63d47ca96f3",
+          "section_title": "数据导出",
+          "heading_path": "数据导出"
+        }
+      ]
+    },
+    {
+      "document_id": "golden-doc-customer-a-discount",
+      "title": "Acme 专属续费优惠",
+      "version": 1,
+      "visibility": "CUSTOMER",
+      "customer_id": "customer-a",
+      "normalized_content_sha256": "d4d1cd2955060405fa7d73f0214179f686f6d9f594ee47c2e0c747458728ce9a",
+      "content": "# Acme 专属续费优惠\n\n客户 customer-a 的企业版续费享受九折专属优惠，优惠不与新购首年折扣叠加。",
+      "expected_chunks": [
+        {
+          "chunk_index": 0,
+          "chunk_id": "chunk-2a207ae4ddc69761904c1c43b4b0a7da",
+          "checksum": "d4d1cd2955060405fa7d73f0214179f686f6d9f594ee47c2e0c747458728ce9a",
+          "section_title": "Acme 专属续费优惠",
+          "heading_path": "Acme 专属续费优惠"
+        }
+      ]
+    },
+    {
+      "document_id": "golden-doc-customer-b-discount",
+      "title": "Beta 专属续费优惠",
+      "version": 1,
+      "visibility": "CUSTOMER",
+      "customer_id": "customer-b",
+      "normalized_content_sha256": "b86adb1bd2cace77d5be4931b61889f16461fa0de21cf624cb219a0a5a3a1732",
+      "content": "# Beta 专属续费优惠\n\n客户 customer-b 的企业版续费享受八五折专属优惠，优惠仅适用于年度订阅。",
+      "expected_chunks": [
+        {
+          "chunk_index": 0,
+          "chunk_id": "chunk-d08f8c833af3ef7c06fce039134031f4",
+          "checksum": "b86adb1bd2cace77d5be4931b61889f16461fa0de21cf624cb219a0a5a3a1732",
+          "section_title": "Beta 专属续费优惠",
+          "heading_path": "Beta 专属续费优惠"
+        }
+      ]
+    }
+  ],
+  "retrieval_cases": [
+    {
+      "case_id": "rag-dev-001",
+      "split": "DEV",
+      "query": "企业版包含多少个席位",
+      "actor_scope": "TENANT_ADMIN",
+      "expected_document_id": "golden-doc-plan-entitlements",
+      "expected_version_number": 1,
+      "expected_chunk_id": "chunk-4140c49c079d27ce23efc2afb08fe130",
+      "expected_heading_path": "套餐与席位",
+      "expect_citation": true
+    },
+    {
+      "case_id": "rag-dev-002",
+      "split": "DEV",
+      "query": "企业版是否支持单点登录和审计日志",
+      "actor_scope": "TENANT_ADMIN",
+      "expected_document_id": "golden-doc-plan-entitlements",
+      "expected_version_number": 1,
+      "expected_chunk_id": "chunk-4140c49c079d27ce23efc2afb08fe130",
+      "expected_heading_path": "套餐与席位",
+      "expect_citation": true
+    },
+    {
+      "case_id": "rag-dev-003",
+      "split": "DEV",
+      "query": "购买后几天内可以申请标准订阅退款",
+      "actor_scope": "TENANT_ADMIN",
+      "expected_document_id": "golden-doc-refund-policy",
+      "expected_version_number": 1,
+      "expected_chunk_id": "chunk-2e8259f26c55c93d5de365509f7b4eab",
+      "expected_heading_path": "退款政策",
+      "expect_citation": true
+    },
+    {
+      "case_id": "rag-dev-004",
+      "split": "DEV",
+      "query": "超过二十个席位的退款需要人工审核吗",
+      "actor_scope": "TENANT_ADMIN",
+      "expected_document_id": "golden-doc-refund-policy",
+      "expected_version_number": 1,
+      "expected_chunk_id": "chunk-2e8259f26c55c93d5de365509f7b4eab",
+      "expected_heading_path": "退款政策",
+      "expect_citation": true
+    },
+    {
+      "case_id": "rag-dev-005",
+      "split": "DEV",
+      "query": "订阅什么时候自动续费",
+      "actor_scope": "TENANT_ADMIN",
+      "expected_document_id": "golden-doc-subscription-renewal",
+      "expected_version_number": 1,
+      "expected_chunk_id": "chunk-ca79df18c32afe7d48584555dfbc8d21",
+      "expected_heading_path": "自动续费",
+      "expect_citation": true
+    },
+    {
+      "case_id": "rag-dev-006",
+      "split": "DEV",
+      "query": "关闭自动续费后当前服务周期还能继续用吗",
+      "actor_scope": "TENANT_ADMIN",
+      "expected_document_id": "golden-doc-subscription-renewal",
+      "expected_version_number": 1,
+      "expected_chunk_id": "chunk-ca79df18c32afe7d48584555dfbc8d21",
+      "expected_heading_path": "自动续费",
+      "expect_citation": true
+    },
+    {
+      "case_id": "rag-dev-007",
+      "split": "DEV",
+      "query": "如何申请增值税专用发票",
+      "actor_scope": "TENANT_ADMIN",
+      "expected_document_id": "golden-doc-invoice-request",
+      "expected_version_number": 1,
+      "expected_chunk_id": "chunk-a745c16b5bac07e821562a022410b6bb",
+      "expected_heading_path": "发票申请",
+      "expect_citation": true
+    },
+    {
+      "case_id": "rag-dev-008",
+      "split": "DEV",
+      "query": "发票抬头必须和什么信息一致",
+      "actor_scope": "TENANT_ADMIN",
+      "expected_document_id": "golden-doc-invoice-request",
+      "expected_version_number": 1,
+      "expected_chunk_id": "chunk-a745c16b5bac07e821562a022410b6bb",
+      "expected_heading_path": "发票申请",
+      "expect_citation": true
+    },
+    {
+      "case_id": "rag-dev-009",
+      "split": "DEV",
+      "query": "支付失败后订单会保留多久",
+      "actor_scope": "TENANT_ADMIN",
+      "expected_document_id": "golden-doc-payment-failure",
+      "expected_version_number": 1,
+      "expected_chunk_id": "chunk-ed4722bdd7e71b797c515fcc630bb31c",
+      "expected_heading_path": "支付失败",
+      "expect_citation": true
+    },
+    {
+      "case_id": "rag-dev-010",
+      "split": "DEV",
+      "query": "支付不要重复提交超过几次",
+      "actor_scope": "TENANT_ADMIN",
+      "expected_document_id": "golden-doc-payment-failure",
+      "expected_version_number": 1,
+      "expected_chunk_id": "chunk-ed4722bdd7e71b797c515fcc630bb31c",
+      "expected_heading_path": "支付失败",
+      "expect_citation": true
+    },
+    {
+      "case_id": "rag-dev-011",
+      "split": "DEV",
+      "query": "SSO 需要在身份平台配置哪些参数",
+      "actor_scope": "TENANT_ADMIN",
+      "expected_document_id": "golden-doc-sso-login",
+      "expected_version_number": 1,
+      "expected_chunk_id": "chunk-a2efa3d93235b6c11de9083fffaf7629",
+      "expected_heading_path": "SSO 登录",
+      "expect_citation": true
+    },
+    {
+      "case_id": "rag-dev-012",
+      "split": "DEV",
+      "query": "普通成员可以修改 SSO 配置吗",
+      "actor_scope": "TENANT_ADMIN",
+      "expected_document_id": "golden-doc-sso-login",
+      "expected_version_number": 1,
+      "expected_chunk_id": "chunk-a2efa3d93235b6c11de9083fffaf7629",
+      "expected_heading_path": "SSO 登录",
+      "expect_citation": true
+    },
+    {
+      "case_id": "rag-dev-013",
+      "split": "DEV",
+      "query": "生产环境每个租户每分钟多少请求",
+      "actor_scope": "TENANT_ADMIN",
+      "expected_document_id": "golden-doc-api-rate-limit",
+      "expected_version_number": 1,
+      "expected_chunk_id": "chunk-64b420da41a2288d2e18dc723c3f3535",
+      "expected_heading_path": "API 限流",
+      "expect_citation": true
+    },
+    {
+      "case_id": "rag-dev-014",
+      "split": "DEV",
+      "query": "请求返回 HTTP 429 后应该怎样重试",
+      "actor_scope": "TENANT_ADMIN",
+      "expected_document_id": "golden-doc-api-rate-limit",
+      "expected_version_number": 1,
+      "expected_chunk_id": "chunk-64b420da41a2288d2e18dc723c3f3535",
+      "expected_heading_path": "API 限流",
+      "expect_citation": true
+    },
+    {
+      "case_id": "rag-dev-015",
+      "split": "DEV",
+      "query": "怀疑账号被盗时第一步应该做什么",
+      "actor_scope": "TENANT_ADMIN",
+      "expected_document_id": "golden-doc-account-security",
+      "expected_version_number": 1,
+      "expected_chunk_id": "chunk-ba5ad186998a5b74a782c8b1622b2b8a",
+      "expected_heading_path": "账号安全",
+      "expect_citation": true
+    },
+    {
+      "case_id": "rag-dev-016",
+      "split": "DEV",
+      "query": "紧急工单多久响应",
+      "actor_scope": "TENANT_ADMIN",
+      "expected_document_id": "golden-doc-ticket-sla",
+      "expected_version_number": 1,
+      "expected_chunk_id": "chunk-0c362621b671df06f476b6774d79bc53",
+      "expected_heading_path": "工单 SLA",
+      "expect_citation": true
+    },
+    {
+      "case_id": "rag-dev-017",
+      "split": "DEV",
+      "query": "租户管理员多久可以申请一次数据导出",
+      "actor_scope": "TENANT_ADMIN",
+      "expected_document_id": "golden-doc-data-export",
+      "expected_version_number": 1,
+      "expected_chunk_id": "chunk-d46df2d40428faab776f65e3f952511c",
+      "expected_heading_path": "数据导出",
+      "expect_citation": true
+    },
+    {
+      "case_id": "rag-dev-018",
+      "split": "DEV",
+      "query": "customer-a 的企业版续费折扣是多少",
+      "actor_scope": "CUSTOMER_A",
+      "expected_document_id": "golden-doc-customer-a-discount",
+      "expected_version_number": 1,
+      "expected_chunk_id": "chunk-2a207ae4ddc69761904c1c43b4b0a7da",
+      "expected_heading_path": "Acme 专属续费优惠",
+      "expect_citation": true
+    },
+    {
+      "case_id": "rag-dev-019",
+      "split": "DEV",
+      "query": "customer-b 的企业版续费折扣是多少",
+      "actor_scope": "CUSTOMER_B",
+      "expected_document_id": "golden-doc-customer-b-discount",
+      "expected_version_number": 1,
+      "expected_chunk_id": "chunk-d08f8c833af3ef7c06fce039134031f4",
+      "expected_heading_path": "Beta 专属续费优惠",
+      "expect_citation": true
+    },
+    {
+      "case_id": "rag-dev-020",
+      "split": "DEV",
+      "query": "客户退款申请的标准时间窗口是多久",
+      "actor_scope": "CUSTOMER_A",
+      "expected_document_id": "golden-doc-refund-policy",
+      "expected_version_number": 1,
+      "expected_chunk_id": "chunk-2e8259f26c55c93d5de365509f7b4eab",
+      "expected_heading_path": "退款政策",
+      "expect_citation": true
+    },
+    {
+      "case_id": "rag-holdout-001",
+      "split": "HOLDOUT",
+      "query": "数据导出文件包含哪些业务数据",
+      "actor_scope": "TENANT_ADMIN",
+      "expected_document_id": "golden-doc-data-export",
+      "expected_version_number": 1,
+      "expected_chunk_id": "chunk-d46df2d40428faab776f65e3f952511c",
+      "expected_heading_path": "数据导出",
+      "expect_citation": true
+    },
+    {
+      "case_id": "rag-holdout-002",
+      "split": "HOLDOUT",
+      "query": "高优工单的响应时限是多少",
+      "actor_scope": "TENANT_ADMIN",
+      "expected_document_id": "golden-doc-ticket-sla",
+      "expected_version_number": 1,
+      "expected_chunk_id": "chunk-0c362621b671df06f476b6774d79bc53",
+      "expected_heading_path": "工单 SLA",
+      "expect_citation": true
+    },
+    {
+      "case_id": "rag-holdout-003",
+      "split": "HOLDOUT",
+      "query": "新增席位付款后多久生效",
+      "actor_scope": "TENANT_ADMIN",
+      "expected_document_id": "golden-doc-plan-entitlements",
+      "expected_version_number": 1,
+      "expected_chunk_id": "chunk-4140c49c079d27ce23efc2afb08fe130",
+      "expected_heading_path": "套餐与席位",
+      "expect_citation": true
+    },
+    {
+      "case_id": "rag-holdout-004",
+      "split": "HOLDOUT",
+      "query": "已经使用二十多个席位的订单退款要走人工吗",
+      "actor_scope": "TENANT_ADMIN",
+      "expected_document_id": "golden-doc-refund-policy",
+      "expected_version_number": 1,
+      "expected_chunk_id": "chunk-2e8259f26c55c93d5de365509f7b4eab",
+      "expected_heading_path": "退款政策",
+      "expect_citation": true
+    },
+    {
+      "case_id": "rag-holdout-005",
+      "split": "HOLDOUT",
+      "query": "支付前应该确认银行卡的什么设置",
+      "actor_scope": "TENANT_ADMIN",
+      "expected_document_id": "golden-doc-payment-failure",
+      "expected_version_number": 1,
+      "expected_chunk_id": "chunk-ed4722bdd7e71b797c515fcc630bb31c",
+      "expected_heading_path": "支付失败",
+      "expect_citation": true
+    },
+    {
+      "case_id": "rag-holdout-006",
+      "split": "HOLDOUT",
+      "query": "客服聊天中可以发送完整验证码吗",
+      "actor_scope": "TENANT_ADMIN",
+      "expected_document_id": "golden-doc-account-security",
+      "expected_version_number": 1,
+      "expected_chunk_id": "chunk-ba5ad186998a5b74a782c8b1622b2b8a",
+      "expected_heading_path": "账号安全",
+      "expect_citation": true
+    },
+    {
+      "case_id": "rag-holdout-007",
+      "split": "HOLDOUT",
+      "query": "生产 API 的默认租户限流阈值",
+      "actor_scope": "TENANT_ADMIN",
+      "expected_document_id": "golden-doc-api-rate-limit",
+      "expected_version_number": 1,
+      "expected_chunk_id": "chunk-64b420da41a2288d2e18dc723c3f3535",
+      "expected_heading_path": "API 限流",
+      "expect_citation": true
+    },
+    {
+      "case_id": "rag-holdout-008",
+      "split": "HOLDOUT",
+      "query": "企业版默认席位数量",
+      "actor_scope": "TENANT_ADMIN",
+      "expected_document_id": "golden-doc-plan-entitlements",
+      "expected_version_number": 1,
+      "expected_chunk_id": "chunk-4140c49c079d27ce23efc2afb08fe130",
+      "expected_heading_path": "套餐与席位",
+      "expect_citation": true
+    },
+    {
+      "case_id": "rag-holdout-009",
+      "split": "HOLDOUT",
+      "query": "Acme 年度续费是否有专属优惠",
+      "actor_scope": "CUSTOMER_A",
+      "expected_document_id": "golden-doc-customer-a-discount",
+      "expected_version_number": 1,
+      "expected_chunk_id": "chunk-2a207ae4ddc69761904c1c43b4b0a7da",
+      "expected_heading_path": "Acme 专属续费优惠",
+      "expect_citation": true
+    },
+    {
+      "case_id": "rag-holdout-010",
+      "split": "HOLDOUT",
+      "query": "Beta 年度订阅续费能享受什么折扣",
+      "actor_scope": "CUSTOMER_B",
+      "expected_document_id": "golden-doc-customer-b-discount",
+      "expected_version_number": 1,
+      "expected_chunk_id": "chunk-d08f8c833af3ef7c06fce039134031f4",
+      "expected_heading_path": "Beta 专属续费优惠",
+      "expect_citation": true
+    }
+  ],
+  "handoff_cases": [
+    {
+      "case_id": "handoff-dev-001",
+      "split": "DEV",
+      "message": "请马上给我转人工客服",
+      "signals": {
+        "explicit_human_request": true,
+        "critical_urgency": false,
+        "security_or_privacy": false,
+        "monetary_dispute": false,
+        "irreversible_action": false,
+        "verified_knowledge_available": true
+      },
+      "expected_handoff": true,
+      "expected_reason": "EXPLICIT_HUMAN_REQUEST"
+    },
+    {
+      "case_id": "handoff-dev-002",
+      "split": "DEV",
+      "message": "我发现账号可能在异地登录，担心被盗",
+      "signals": {
+        "explicit_human_request": false,
+        "critical_urgency": false,
+        "security_or_privacy": true,
+        "monetary_dispute": false,
+        "irreversible_action": false,
+        "verified_knowledge_available": true
+      },
+      "expected_handoff": true,
+      "expected_reason": "SECURITY_OR_PRIVACY"
+    },
+    {
+      "case_id": "handoff-dev-003",
+      "split": "DEV",
+      "message": "请永久注销我们的整个企业租户",
+      "signals": {
+        "explicit_human_request": false,
+        "critical_urgency": false,
+        "security_or_privacy": false,
+        "monetary_dispute": false,
+        "irreversible_action": true,
+        "verified_knowledge_available": true
+      },
+      "expected_handoff": true,
+      "expected_reason": "IRREVERSIBLE_ACTION"
+    },
+    {
+      "case_id": "handoff-dev-004",
+      "split": "DEV",
+      "message": "同一笔订单被扣了两次，我要退款并要求处理争议",
+      "signals": {
+        "explicit_human_request": false,
+        "critical_urgency": false,
+        "security_or_privacy": false,
+        "monetary_dispute": true,
+        "irreversible_action": false,
+        "verified_knowledge_available": true
+      },
+      "expected_handoff": true,
+      "expected_reason": "MONETARY_DISPUTE"
+    },
+    {
+      "case_id": "handoff-dev-005",
+      "split": "DEV",
+      "message": "生产环境完全不可用，所有客户都无法登录",
+      "signals": {
+        "explicit_human_request": false,
+        "critical_urgency": true,
+        "security_or_privacy": false,
+        "monetary_dispute": false,
+        "irreversible_action": false,
+        "verified_knowledge_available": true
+      },
+      "expected_handoff": true,
+      "expected_reason": "CRITICAL_URGENCY"
+    },
+    {
+      "case_id": "handoff-dev-006",
+      "split": "DEV",
+      "message": "我要找你们经理投诉这次处理结果",
+      "signals": {
+        "explicit_human_request": true,
+        "critical_urgency": false,
+        "security_or_privacy": false,
+        "monetary_dispute": false,
+        "irreversible_action": false,
+        "verified_knowledge_available": false
+      },
+      "expected_handoff": true,
+      "expected_reason": "EXPLICIT_HUMAN_REQUEST"
+    },
+    {
+      "case_id": "handoff-dev-007",
+      "split": "DEV",
+      "message": "退款申请应该在几天内提交",
+      "signals": {
+        "explicit_human_request": false,
+        "critical_urgency": false,
+        "security_or_privacy": false,
+        "monetary_dispute": false,
+        "irreversible_action": false,
+        "verified_knowledge_available": true
+      },
+      "expected_handoff": false,
+      "expected_reason": "KNOWLEDGE_SUFFICIENT"
+    },
+    {
+      "case_id": "handoff-dev-008",
+      "split": "DEV",
+      "message": "增值税发票在哪里申请",
+      "signals": {
+        "explicit_human_request": false,
+        "critical_urgency": false,
+        "security_or_privacy": false,
+        "monetary_dispute": false,
+        "irreversible_action": false,
+        "verified_knowledge_available": true
+      },
+      "expected_handoff": false,
+      "expected_reason": "SELF_SERVICE_AVAILABLE"
+    },
+    {
+      "case_id": "handoff-dev-009",
+      "split": "DEV",
+      "message": "管理员如何配置 SSO 的 ACS 地址",
+      "signals": {
+        "explicit_human_request": false,
+        "critical_urgency": false,
+        "security_or_privacy": false,
+        "monetary_dispute": false,
+        "irreversible_action": false,
+        "verified_knowledge_available": true
+      },
+      "expected_handoff": false,
+      "expected_reason": "SELF_SERVICE_AVAILABLE"
+    },
+    {
+      "case_id": "handoff-dev-010",
+      "split": "DEV",
+      "message": "API 每分钟限流多少",
+      "signals": {
+        "explicit_human_request": false,
+        "critical_urgency": false,
+        "security_or_privacy": false,
+        "monetary_dispute": false,
+        "irreversible_action": false,
+        "verified_knowledge_available": true
+      },
+      "expected_handoff": false,
+      "expected_reason": "KNOWLEDGE_SUFFICIENT"
+    },
+    {
+      "case_id": "handoff-dev-011",
+      "split": "DEV",
+      "message": "支付失败后订单保留多久",
+      "signals": {
+        "explicit_human_request": false,
+        "critical_urgency": false,
+        "security_or_privacy": false,
+        "monetary_dispute": false,
+        "irreversible_action": false,
+        "verified_knowledge_available": true
+      },
+      "expected_handoff": false,
+      "expected_reason": "KNOWLEDGE_SUFFICIENT"
+    },
+    {
+      "case_id": "handoff-dev-012",
+      "split": "DEV",
+      "message": "高优工单多久响应",
+      "signals": {
+        "explicit_human_request": false,
+        "critical_urgency": false,
+        "security_or_privacy": false,
+        "monetary_dispute": false,
+        "irreversible_action": false,
+        "verified_knowledge_available": true
+      },
+      "expected_handoff": false,
+      "expected_reason": "KNOWLEDGE_SUFFICIENT"
+    },
+    {
+      "case_id": "handoff-holdout-001",
+      "split": "HOLDOUT",
+      "message": "我们发现客户名单疑似泄露，需要紧急处理",
+      "signals": {
+        "explicit_human_request": false,
+        "critical_urgency": true,
+        "security_or_privacy": true,
+        "monetary_dispute": false,
+        "irreversible_action": false,
+        "verified_knowledge_available": false
+      },
+      "expected_handoff": true,
+      "expected_reason": "CRITICAL_URGENCY"
+    },
+    {
+      "case_id": "handoff-holdout-002",
+      "split": "HOLDOUT",
+      "message": "请删除我们租户的全部业务数据",
+      "signals": {
+        "explicit_human_request": false,
+        "critical_urgency": false,
+        "security_or_privacy": false,
+        "monetary_dispute": false,
+        "irreversible_action": true,
+        "verified_knowledge_available": true
+      },
+      "expected_handoff": true,
+      "expected_reason": "IRREVERSIBLE_ACTION"
+    },
+    {
+      "case_id": "handoff-holdout-003",
+      "split": "HOLDOUT",
+      "message": "不要再让机器人回答，我要真人",
+      "signals": {
+        "explicit_human_request": true,
+        "critical_urgency": false,
+        "security_or_privacy": false,
+        "monetary_dispute": false,
+        "irreversible_action": false,
+        "verified_knowledge_available": true
+      },
+      "expected_handoff": true,
+      "expected_reason": "EXPLICIT_HUMAN_REQUEST"
+    },
+    {
+      "case_id": "handoff-holdout-004",
+      "split": "HOLDOUT",
+      "message": "付款被重复扣款，我不接受自动回复",
+      "signals": {
+        "explicit_human_request": false,
+        "critical_urgency": false,
+        "security_or_privacy": false,
+        "monetary_dispute": true,
+        "irreversible_action": false,
+        "verified_knowledge_available": true
+      },
+      "expected_handoff": true,
+      "expected_reason": "MONETARY_DISPUTE"
+    },
+    {
+      "case_id": "handoff-holdout-005",
+      "split": "HOLDOUT",
+      "message": "怎么关闭自动续费",
+      "signals": {
+        "explicit_human_request": false,
+        "critical_urgency": false,
+        "security_or_privacy": false,
+        "monetary_dispute": false,
+        "irreversible_action": false,
+        "verified_knowledge_available": true
+      },
+      "expected_handoff": false,
+      "expected_reason": "SELF_SERVICE_AVAILABLE"
+    },
+    {
+      "case_id": "handoff-holdout-006",
+      "split": "HOLDOUT",
+      "message": "数据导出多久可以申请一次",
+      "signals": {
+        "explicit_human_request": false,
+        "critical_urgency": false,
+        "security_or_privacy": false,
+        "monetary_dispute": false,
+        "irreversible_action": false,
+        "verified_knowledge_available": true
+      },
+      "expected_handoff": false,
+      "expected_reason": "KNOWLEDGE_SUFFICIENT"
+    },
+    {
+      "case_id": "handoff-holdout-007",
+      "split": "HOLDOUT",
+      "message": "企业版套餐有多少个席位",
+      "signals": {
+        "explicit_human_request": false,
+        "critical_urgency": false,
+        "security_or_privacy": false,
+        "monetary_dispute": false,
+        "irreversible_action": false,
+        "verified_knowledge_available": true
+      },
+      "expected_handoff": false,
+      "expected_reason": "KNOWLEDGE_SUFFICIENT"
+    },
+    {
+      "case_id": "handoff-holdout-008",
+      "split": "HOLDOUT",
+      "message": "发票抬头需要满足什么要求",
+      "signals": {
+        "explicit_human_request": false,
+        "critical_urgency": false,
+        "security_or_privacy": false,
+        "monetary_dispute": false,
+        "irreversible_action": false,
+        "verified_knowledge_available": true
+      },
+      "expected_handoff": false,
+      "expected_reason": "SELF_SERVICE_AVAILABLE"
+    }
+  ]
+}
