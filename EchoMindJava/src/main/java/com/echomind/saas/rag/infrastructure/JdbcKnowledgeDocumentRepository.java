@@ -445,6 +445,25 @@ public class JdbcKnowledgeDocumentRepository implements KnowledgeDocumentReposit
     }
 
     @Override
+    public List<KnowledgeChunk> versionChunks(
+            TenantId tenantId,
+            String documentId,
+            int versionNumber) {
+        return jdbc.query("""
+                select chunk_id, document_id, version_number, chunk_index,
+                       document_title, content, page_number, section_title,
+                       heading_path, char_start, char_end, checksum,
+                       visibility, customer_id, embedding_json
+                from knowledge_chunk
+                where tenant_id = ?
+                  and document_id = ?
+                  and version_number = ?
+                order by chunk_index
+                """, (result, row) -> mapChunk(result),
+                tenantId.value(), documentId, versionNumber);
+    }
+
+    @Override
     public long countPublishedChunks(TenantId tenantId) {
         Long count = jdbc.queryForObject("""
                 select count(*)

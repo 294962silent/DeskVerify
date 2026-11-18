@@ -2,17 +2,15 @@ package com.echomind.saas.evaluation.golden;
 
 import com.echomind.saas.rag.application.ChunkDraft;
 import com.echomind.saas.rag.application.DocumentChunker;
+import com.echomind.saas.rag.application.KnowledgeIndexBuilder;
 import com.echomind.saas.rag.domain.KnowledgeVisibility;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -287,18 +285,11 @@ public final class GoldenDatasetLoader {
     }
 
     static String normalizeText(String raw) {
-        String value = normalizeLineEndings(raw)
-                .replaceAll("[\\t\\x0B\\f]+", " ");
-        value = value.lines()
-                .map(String::stripTrailing)
-                .reduce((left, right) -> left + "\n" + right)
-                .orElse("");
-        return value.replaceAll("\n{3,}", "\n\n").strip();
+        return KnowledgeIndexBuilder.normalizeText(raw);
     }
 
     static String deterministicChunkId(String documentId, int version, int index) {
-        return "chunk-" + sha256(documentId + ":" + version + ":" + index)
-                .substring(0, 32);
+        return KnowledgeIndexBuilder.deterministicChunkId(documentId, version, index);
     }
 
     static String normalizeLineEndings(String value) {
@@ -306,12 +297,6 @@ public final class GoldenDatasetLoader {
     }
 
     static String sha256(String value) {
-        try {
-            return HexFormat.of().formatHex(
-                    MessageDigest.getInstance("SHA-256")
-                            .digest(value.getBytes(StandardCharsets.UTF_8)));
-        } catch (NoSuchAlgorithmException exception) {
-            throw new IllegalStateException("SHA-256 is unavailable", exception);
-        }
+        return KnowledgeIndexBuilder.sha256(value);
     }
 }

@@ -32,8 +32,10 @@ class KnowledgeIngestionServiceTest {
     private final KnowledgeDocumentRepository repository =
             mock(KnowledgeDocumentRepository.class);
     private final LocalHashEmbeddingProvider embeddings = new LocalHashEmbeddingProvider();
+    private final KnowledgeIndexBuilder indexBuilder =
+            new KnowledgeIndexBuilder(new MarkdownAwareChunker(), embeddings);
     private final KnowledgeIngestionService service = new KnowledgeIngestionService(
-            repository, new MarkdownAwareChunker(), embeddings);
+            repository, indexBuilder);
 
     @Test
     void adminCreatesDocumentAndIndexesChunksAsDraft() {
