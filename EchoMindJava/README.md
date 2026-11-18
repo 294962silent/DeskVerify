@@ -202,6 +202,21 @@ GET  /eval/jobs/{jobId}/report.md
 转人工策略案例。检索案例按 20/10、转人工案例按 12/8 分为 DEV/HOLDOUT，执行真实
 BGE ONNX 和 MySQL 混合检索。数据集为合成方法验证基线，V1 不调用外部 LLM。
 
+Golden release gate 的默认阻塞条件：
+
+- ACL violation 为 `0`。
+- DEV/HOLDOUT 的 Recall@5、MRR@5、citation hit 相对 baseline 下降不超过
+  `0.02`。
+- 检索 degraded rate 为 `0`，避免 BGE 不可用时静默通过。
+- 转人工 Recall 不低于 `0.95`，false escalation 和 missed handoff 不高于
+  `0.10`。
+- ALL P95 超过 `2000 ms` 时产生 advisory warning；V1 不据此阻塞。
+
+门槛可通过 `GOLDEN_EVAL_*` 环境变量调整。阻塞检查失败时异步任务返回稳定错误码
+`GOLDEN_EVALUATION_GATE_FAILED`，同时保留报告。CI 通过
+`scripts/assert-golden-evaluation.ps1` 检查 `gate.passed=true`，并确认
+`GoldenEvaluationEndToEndTest` 实际执行且 skipped 为 `0`。
+
 ### Swagger / OpenAPI
 
 Python 版 FastAPI 默认提供 `/docs`。

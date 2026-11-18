@@ -45,14 +45,33 @@ $env:DOCKER_HOST = "npipe:////./pipe/dockerDesktopLinuxEngine"
 
 当前工作树验证结果：
 
-- Backend: `269/269` across 57 Surefire suites
-- Frontend: `20/20`
+- Backend: `274/274` across 58 Surefire suites
+- Frontend: `21/21`
 - Vite production build: passed
 - Live MySQL / Testcontainers skips: `0`
 - Flyway V1-V11 and demo V100: passed on MySQL 8.4
 - Docker image: `echomind-java:bge-verified` built successfully
 - Container BGE smoke: provider loaded, 512-dimensional vector persisted, and
   search returned a citation without degraded modes
+
+## GitHub Actions
+
+`.github/workflows/ci.yml` 在 pull request 和 `main` push 上执行：
+
+- Java 21 完整 Maven 测试，Docker 中运行 MySQL 8.4 Testcontainers。
+- 下载并校验 `bge-small-zh-v1.5` ONNX 模型，缓存命中时也会重新校验 SHA-256。
+- 断言 Golden E2E 实际执行、`skipped=0` 且 `gate.passed=true`。
+- Node 22 下的前端测试和 Vite 生产构建。
+- 上传 Surefire、Golden JSON/Markdown 和前端 build artifact。
+
+本地执行同一 Golden artifact 断言：
+
+```powershell
+cd E:\EchoMind\echomind-saas-agent\EchoMindJava
+pwsh -NoProfile -File .\scripts\assert-golden-evaluation.ps1 `
+  -ReportDirectory .\target\golden-e2e\reports `
+  -SurefireDirectory .\target\surefire-reports
+```
 
 ### Docker Hub Proxy
 
@@ -318,6 +337,16 @@ GET /eval/jobs/{jobId}/report.md
 
 该数据集是 `synthetic`、非人工审核、非生产代表性样本，V1 外部 LLM token 为 0。
 详见 [Golden RAG And Handoff V1](./experiments/GOLDEN_RAG_HANDOFF_V1.md)。
+
+Release gate 使用同目录下的 `baseline.json`。默认最大相对回退为 `0.02`；
+ACL violation 和 degraded rate 必须为 `0`；转人工 Recall 最低 `0.95`，
+误转人工率和漏转人工率最高 `0.10`。ALL P95 超过 `2000 ms` 只产生 advisory
+warning，避免把网络和 Runner 抖动误判成质量回退。配置入口为
+`echomind.eval.golden-gate`，对应 `GOLDEN_EVAL_*` 环境变量。
+
+阻塞检查失败时，异步任务写入完整报告后标记为 `failed` / `gate_failed`，错误码为
+`GOLDEN_EVALUATION_GATE_FAILED`；报告下载接口仍然可用。CI 额外检查 Golden E2E
+Surefire 结果，`skipped>0` 视为失败，不能把缺少模型当成通过。
 
 词法或向量任一路失败时，响应会返回 `degraded_modes`，不会把降级结果伪装成全链路成功。
 现有降级值包括：

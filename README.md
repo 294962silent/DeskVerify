@@ -179,6 +179,15 @@ curl.exe -X POST http://localhost:8080/eval/run `
 用户泛化能力，V1 外部 LLM token 消耗为 0。实验记录见
 [Golden RAG And Handoff V1](./docs/experiments/GOLDEN_RAG_HANDOFF_V1.md)。
 
+该评测现在包含 release gate：ACL violation 必须为 0，DEV/HOLDOUT 的
+Recall@5、MRR@5 和引用命中率相对版本化 baseline 最多下降 2 个百分点，
+转人工 Recall 不低于 0.95，误转人工率和漏转人工率不高于 0.10。P95 在 V1
+作为 2000 ms 告警项，不阻塞小规模基准。门禁失败的任务状态为 `failed`，但
+JSON/Markdown 证据仍会保存并可下载。
+
+GitHub Actions 会在真实 MySQL 8.4 和 BGE ONNX 上执行完整后端测试，校验
+Golden E2E 没有被 skip，然后上传 Surefire、Golden 报告和前端构建 artifact。
+
 ## 配置与安全
 
 - 不要把真实 API Key、Redis 密码或本地 `.env` 文件提交到 Git。
