@@ -15,7 +15,6 @@ export function saveAccessToken(token, storage = globalThis.sessionStorage) {
 }
 
 export function javaAuthHeaders(type, storage = globalThis.sessionStorage) {
-  if (type !== 'java') return {}
   const token = getAccessToken(storage)
   if (!token) {
     throw new Error('Java backend requires an access token for this session.')

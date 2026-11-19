@@ -1,0 +1,107 @@
+name: deskverify
+
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: deskverify-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-deskverify}
+      MYSQL_USER: ${ECHOMIND_DB_USERNAME:-deskverify}
+      MYSQL_PASSWORD: ${ECHOMIND_DB_PASSWORD:-deskverify-local-password}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-deskverify-local-root}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p$${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    networks:
+      - deskverify
+
+  redis:
+    image: redis:7-alpine
+    container_name: deskverify-redis
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-deskverify-local-redis}
+    command:
+      - sh
+      - -c
+      - exec redis-server --appendonly yes --requirepass "$${REDIS_PASSWORD}"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD}\" ping | grep -q PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - deskverify
+
+  backend:
+    build:
+      context: ./EchoMindJava
+      dockerfile: Dockerfile
+    container_name: deskverify-backend
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      ECHOMIND_DB_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-deskverify}?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true
+      ECHOMIND_DB_USERNAME: ${ECHOMIND_DB_USERNAME:-deskverify}
+      ECHOMIND_DB_PASSWORD: ${ECHOMIND_DB_PASSWORD:-deskverify-local-password}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-deskverify-local-redis}
+      ECHOMIND_DATA_DIR: /app/data/java
+      ECHOMIND_SKILLS_DIR: /app/skills
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-anthropic,demo}
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    volumes:
+      - backend-data:/app/data
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    stop_grace_period: 30s
+    networks:
+      - deskverify
+
+  frontend:
+    build:
+      context: ./EchoMindFrontend
+      dockerfile: Dockerfile
+    container_name: deskverify-frontend
+    restart: unless-stopped
+    environment:
+      JAVA_API_URL: /api/java
+    ports:
+      - "${FRONTEND_PORT:-5173}:80"
+    depends_on:
+      backend:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1/ >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - deskverify
+
+volumes:
+  mysql-data:
+  redis-data:
+  backend-data:
+
+networks:
+  deskverify:
+    name: deskverify-network

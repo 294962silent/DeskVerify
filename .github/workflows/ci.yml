@@ -67,6 +67,10 @@ jobs:
           done
           exit 1
 
+      - name: Validate Windows release layout
+        shell: pwsh
+        run: ../scripts/test-release-layout.ps1
+
       - name: Run backend test suite
         shell: bash
         run: |

@@ -18,15 +18,9 @@ export class BackendRequestError extends Error {
 }
 
 const DEFAULT_BACKENDS = {
-  python: {
-    id: 'python',
-    label: 'Python',
-    baseUrl: runtimeConfig().pythonApiUrl || import.meta.env.VITE_PYTHON_API_URL || '/api/python',
-    port: '8000'
-  },
   java: {
     id: 'java',
-    label: 'Java',
+    label: 'DeskVerify',
     baseUrl: runtimeConfig().javaApiUrl || import.meta.env.VITE_JAVA_API_URL || '/api/java',
     port: '8080'
   }
@@ -35,11 +29,10 @@ const DEFAULT_BACKENDS = {
 export function createInitialSettings() {
   const saved = readSettings()
   return {
-    backend: saved.backend || import.meta.env.VITE_DEFAULT_BACKEND || 'python',
+    backend: 'java',
     userId: saved.userId || 'u1001',
     conversationId: saved.conversationId || '',
     endpoints: {
-      python: saved.endpoints?.python || DEFAULT_BACKENDS.python.baseUrl,
       java: saved.endpoints?.java || DEFAULT_BACKENDS.java.baseUrl
     }
   }
@@ -50,10 +43,10 @@ export function saveSettings(settings) {
 }
 
 export function backendMeta(type, settings) {
-  const meta = DEFAULT_BACKENDS[type] || DEFAULT_BACKENDS.java
+  const meta = DEFAULT_BACKENDS.java
   return {
     ...meta,
-    baseUrl: normalizeBaseUrl(settings.endpoints[type] || meta.baseUrl)
+    baseUrl: normalizeBaseUrl(settings.endpoints.java || meta.baseUrl)
   }
 }
 
@@ -171,7 +164,7 @@ function normalizeChatResponse(type, raw) {
   const rag = normalizeChatRagFields(raw)
   return {
     backend: type,
-    conversationId: raw.conversation_id || raw.conversationId || raw.conv_id || '',
+    conversationId: raw.conversation_id || raw.conversationId || '',
     requestId: raw.request_id || raw.requestId || '',
     response: raw.response || '',
     intent: raw.intent || 'other',

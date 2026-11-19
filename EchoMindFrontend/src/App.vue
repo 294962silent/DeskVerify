@@ -156,11 +156,6 @@
                 <span class="status-copy" :class="healthOk ? 'success' : 'muted'">{{ healthLabel }}</span>
               </div>
 
-              <div class="backend-tabs">
-                <button :class="{ active: settings.backend === 'java' }" @click="switchBackend('java')">Java</button>
-                <button :class="{ active: settings.backend === 'python' }" @click="switchBackend('python')">Python</button>
-              </div>
-
               <label>
                 <span>用户 ID</span>
                 <input v-model="settings.userId" @change="persist" placeholder="u1001" />
@@ -598,24 +593,6 @@ function updateSidebarHeight() {
   sidebar.style.setProperty('--sidebar-height', `${height}px`)
 }
 
-function switchBackend(type) {
-  settings.backend = type
-  persist()
-  healthOk.value = false
-  healthLabel.value = '未检查'
-  messages.value = []
-  searchResults.value = []
-  lastResponse.value = null
-  lastTrace.value = null
-  evalData.value = null
-  evalJob.value = null
-  evalError.value = ''
-  evaluationPollGeneration += 1
-  clearTimeout(evaluationPollTimer)
-  refreshConsole()
-  loadLatestEvaluation()
-}
-
 async function refreshConsole() {
   await Promise.allSettled([checkHealth(), loadStats(), loadMonitor(), loadSkills()])
 }
@@ -630,24 +607,6 @@ async function checkHealth() {
     healthOk.value = false
     healthLabel.value = '不可用'
     statusText.value = error.message
-
-    // When the saved backend is stale, try the other configured service once.
-    const fallback = settings.backend === 'python' ? 'java' : 'python'
-    if (settings.backend !== fallback) {
-      try {
-        const fallbackData = await requestHealth(fallback, settings)
-        if (fallbackData.status === 'ok') {
-          settings.backend = fallback
-          persist()
-          healthOk.value = true
-          healthLabel.value = fallbackData.status
-          statusText.value = JSON.stringify(fallbackData, null, 2)
-          await Promise.allSettled([loadStats(), loadMonitor(), loadSkills()])
-        }
-      } catch {
-        // Keep the original error visible when both services are unavailable.
-      }
-    }
   }
 }
 

@@ -9,6 +9,7 @@ WORKDIR /app
 ENV JAVA_OPTS=""
 COPY --from=build /workspace/target/echomind-java-0.1.0.jar /app/echomind-java.jar
 COPY models/bge-small-zh-v1.5 /app/models/bge-small-zh-v1.5
+COPY skills /app/skills
 ENV RAG_EMBEDDING_MODEL="bge-small-zh-v1.5-onnx-fp32"
 ENV RAG_EMBEDDING_MODEL_PATH="/app/models/bge-small-zh-v1.5/model.onnx"
 ENV RAG_TOKENIZER_PATH="/app/models/bge-small-zh-v1.5/tokenizer.json"
