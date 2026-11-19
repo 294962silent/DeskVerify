@@ -1,12 +1,15 @@
-# EchoMind Java 版本说明
+# DeskVerify Java 后端说明
 
-EchoMind Java 是 Python 版 EchoMind 的 Java/Spring 技术栈重构版，目录位于：
+DeskVerify 的 Java/Spring 后端目录位于：
 
 
 
 当前版本已经覆盖智能客服主链路：对话请求、Redis 工作记忆、MySQL 版本化
 Hybrid RAG、多 Agent 路由、Spring AI 模型调用、回答校验、Commerce/工单业务域、
 评测、监控、Swagger 文档和 Docker 部署。
+
+为兼容现有代码和数据库，`com.echomind` 包名、`EchoMindJava` 目录及部分内部
+服务名暂时保留；项目对外名称统一为 `DeskVerify`。
 
 ## 技术栈
 

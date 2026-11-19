@@ -1,6 +1,8 @@
-# EchoMind SaaS Platform
+# DeskVerify SaaS Platform
 
-EchoMind 是一个面向企业 SaaS 产品支持场景演进的智能客服平台。项目采用 Java/Spring Boot 后端与 Vue 3 前端，保留多智能体路由、知识库检索、会话记忆、回答校验和评测能力，支持后续扩展产品咨询、技术支持、账户与订阅管理等企业服务场景。
+DeskVerify（原 EchoMind）是一个面向企业 SaaS 客服场景的 RAG Agent 平台。项目采用 Java/Spring Boot 后端与 Vue 3 前端，将多智能体路由、版本化知识检索、会话记忆、业务工具、回答校验和评测门禁整合为可追溯、可回归的客服后端。
+
+> 为兼容现有数据库、类和构建配置，源码目录及 `com.echomind` Java 包名暂时保留；对外的项目名称统一使用 `DeskVerify`。
 
 > 当前仓库包含 Java 后端和 Vue 前端；Python 版本不在本仓库中。前端仍保留对 Python/Java 两种后端响应格式的兼容适配。
 >
@@ -39,7 +41,7 @@ EchoMind 是一个面向企业 SaaS 产品支持场景演进的智能客服平�
 ## 项目结构
 
 ```text
-EchoMind 企业 SaaS 智能支持平台/
+DeskVerify 企业 SaaS 智能支持平台/
 ├── EchoMindJava/                 # Java/Spring Boot 后端
 │   ├── src/main/java/             # 对话、Agent、RAG、记忆、评测和监控
 │   ├── skills/                    # Agent Skill 与领域提示词

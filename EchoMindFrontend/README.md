@@ -1,6 +1,7 @@
-# EchoMind Frontend
+# DeskVerify Frontend
 
-独立 Vue 前端项目，可同时连接 EchoMind Python 版本和 EchoMind Java 版本。
+DeskVerify 的 Vue 3 管理端，当前连接 DeskVerify Java 后端；为兼容旧配置，
+源码目录和内部前端包名暂时保留 `EchoMind` 命名。
 
 项目目录：
 

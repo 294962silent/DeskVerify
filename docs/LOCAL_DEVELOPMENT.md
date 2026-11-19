@@ -67,7 +67,7 @@ $env:DOCKER_HOST = "npipe:////./pipe/dockerDesktopLinuxEngine"
 当前 Draft PR 验证运行：
 
 ```text
-https://github.com/294962silent/EchoMind-SaaS-Agent/actions/runs/44346435272
+https://github.com/294962silent/DeskVerify/actions/runs/44347860640
 ```
 
 该运行的后端、Golden artifact 断言和前端 job 均成功，并上传：

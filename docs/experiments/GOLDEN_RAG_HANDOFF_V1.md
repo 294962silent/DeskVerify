@@ -266,7 +266,7 @@ Latest local verification on this machine:
 - Frontend GitHub Actions job: 21 tests passed and Vite production build
   passed.
 - CI run:
-  `https://github.com/294962silent/EchoMind-SaaS-Agent/actions/runs/44346435272`.
+  `https://github.com/294962silent/DeskVerify/actions/runs/44347860640`.
 - CI artifacts: `backend-surefire-reports`, `golden-evaluation-reports`, and
   `frontend-dist` were uploaded successfully.
 
