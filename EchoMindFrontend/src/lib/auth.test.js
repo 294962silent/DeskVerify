@@ -16,7 +16,6 @@ test('Java requests receive the session Bearer token', () => {
   assert.deepEqual(javaAuthHeaders('java', session), {
     Authorization: 'Bearer test-token'
   })
-  assert.deepEqual(javaAuthHeaders('python', session), {})
 })
 
 test('missing Java token fails before a request can be made', () => {
@@ -60,15 +59,16 @@ test('missing Java token rejects before mocked fetch is called', async () => {
   assert.equal(fetchCalls, 0)
 })
 
-test('Python transport sends no bearer header', async () => {
-  const calls = []
+test('all DeskVerify transports require the session token', async () => {
+  let fetchCalls = 0
   const fetchImpl = async (...args) => {
-    calls.push(args)
+    fetchCalls++
     return new Response('{}', { status: 200 })
   }
 
-  await authorizedFetch('/api/python/health', 'python', {}, storage(), fetchImpl)
-
-  assert.equal(calls.length, 1)
-  assert.equal(calls[0][1].headers.Authorization, undefined)
+  await assert.rejects(
+    authorizedFetch('/api/java/health', 'legacy', {}, storage(), fetchImpl),
+    /access token/
+  )
+  assert.equal(fetchCalls, 0)
 })

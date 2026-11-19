@@ -1,109 +1,66 @@
 # DeskVerify Frontend
 
-DeskVerify 的 Vue 3 管理端，当前连接 DeskVerify Java 后端；为兼容旧配置，
-源码目录和内部前端包名暂时保留 `EchoMind` 命名。
-
-项目目录：
-
-```text
-./EchoMindFrontend
-```
+DeskVerify 的 Vue 3 + Vite 管理端。
 
 ## 功能
 
-- 在页面中切换 Java / Python 后端。
-- 统一适配 `/chat` 响应字段：
-  - Python：`conv_id`、`agent_type`、`latency_ms`
-  - Java：`conversation_id`、`agent_type`、`latency_ms`
-- 支持聊天调试、健康检查、监控摘要、知识库检索、知识库文档导入、文件上传。
-- 支持 Docker + Nginx 部署。
+- 客服 Agent 对话、Citation 引用链和检索降级状态
+- 知识库检索、导入、版本发布和迁移
+- Commerce 订单、订阅和发票查询
+- 工单创建、认领、解决、关闭和重开
+- Golden RAG、转人工策略和评测报告
+- Java JWT 会话鉴权
 
-## 默认后端地址
+## Release Runtime
 
-| 后端 | 默认地址 |
-|------|----------|
-| Python | `http://localhost:8000` |
-| Java | `http://localhost:8080` |
+`v0.1.0` 推荐在仓库或发布包根目录用 PowerShell 7 启动：
 
-开发模式下，Vite 会代理：
-
-| 前端路径 | 代理到 |
-|----------|--------|
-| `/api/python` | `http://localhost:8000` |
-| `/api/java` | `http://localhost:8080` |
-
-Docker 模式下，Nginx 会通过运行时注入的地址访问后端。默认仍指向宿主机上的 Python / Java 服务。
-
-## 本地运行
-
-安装依赖：
-
-```bash
-npm install
+```powershell
+.\start.ps1
 ```
 
-启动：
-
-```bash
-npm run dev
-```
-
-访问：
+浏览器访问：
 
 ```text
 http://localhost:5173
 ```
 
-如果后端端口不是默认值，可以启动时覆盖：
+前端 Nginx 将 `/api/java/` 反向代理到 Compose 内部的 Java 后端。启动、端口和停止说明见
+[Windows 发布指南](../docs/RELEASE_WINDOWS_V0_1_0.md)。
 
-```bash
-VITE_PYTHON_API_URL=http://localhost:8000 \
-VITE_JAVA_API_URL=http://localhost:8080 \
+## Local Development
+
+开发前端时需要 Node.js 22。先启动 Java 后端，再从 `EchoMindFrontend` 目录运行：
+
+```powershell
+npm ci
 npm run dev
 ```
 
-## Docker 部署
-
-直接构建并启动三服务：
-
-```bash
-docker compose up -d --build
-```
-
-前提是 `EchoMindFrontend` 的父目录下有这三个目录：
-
-```text
-../EchoMind
-../EchoMindJava
-./
-```
-
-访问前端：
-
-```text
-http://localhost
-```
-
-如果只想暴露前端端口，可改 `FRONTEND_PORT`，默认仍可通过 `80` 统一入口访问。
-
-停止：
-
-```bash
-docker compose down
-```
-
-## 后端启动参考
-
-Python 版默认：
-
-```text
-http://localhost:8000
-```
-
-Java 版默认：
+Vite 默认将 `/api/java` 代理到：
 
 ```text
 http://localhost:8080
 ```
 
-两个后端不需要同时启动。前端页面里选择当前要调试的后端即可。
+如果 Docker 前端已使用 `5173`，可以用 `npm run dev -- --port 5174` 启动 Vite。
+
+需要覆盖后端地址时：
+
+```powershell
+$env:VITE_JAVA_API_URL = "http://localhost:8080"
+npm run dev
+```
+
+## Authentication
+
+页面没有账号密码登录。请将根目录 `.deskverify/demo-token.txt` 中的本地演示 JWT，
+或由当前后端信任的身份系统签发的 JWT，粘贴到“Java 访问令牌”输入框。
+演示身份是 Acme 客户；评测与知识库管理需要后端授权的租户管理员身份。
+
+## Tests
+
+```powershell
+npm test -- --run
+npm run build
+```

@@ -1,25 +1,16 @@
 # 本地开发与验证
 
-## 当前环境
+## 开发环境
 
-- Docker Desktop: `D:\Docker\Docker`
-- Docker WSL 数据目录: `D:\Docker\data\wsl`
-- Docker CLI: `D:\Docker\Docker\resources\bin\docker.exe`
-- Docker service: `com.docker.service`，启动类型 Automatic
-- Windows: Windows 11，WSL 2.6.3，`VirtualMachinePlatform` 已启用
-- Java 构建目标: Java 21
-
-Docker Desktop 和 CLI 路径已写入持久用户/系统 PATH。已有终端或 Codex 进程需要重启后才能直接使用 `docker` 命令；当前会话可显式设置：
-
-```powershell
-$env:Path = "D:\Docker\Docker\resources\bin;$env:Path"
-$env:DOCKER_HOST = "npipe:////./pipe/dockerDesktopLinuxEngine"
-docker version
-```
+从仓库根目录打开 PowerShell 7。安装 Docker Desktop 并使用 Linux 容器，确保
+`docker version` 和 `docker compose version` 正常。运行完整后端测试需要 JDK 21，
+前端开发需要 Node.js 22。只是运行 Windows 演示包不需要本机 JDK 或 Node.js；
+请使用 [Windows 发布指南](./RELEASE_WINDOWS_V0_1_0.md) 的根目录启动脚本。
 
 ## Testcontainers
 
-项目使用 Testcontainers 1.21.4。Docker Engine 29 需要显式使用 Docker Desktop Linux pipe：
+项目使用 Testcontainers 1.21.4。如果在 Windows 上 Maven 无法发现已运行的
+Docker Desktop Linux 引擎，可在当前 PowerShell 临时显式设置：
 
 ```powershell
 $env:DOCKER_HOST = "npipe:////./pipe/dockerDesktopLinuxEngine"
@@ -33,26 +24,18 @@ connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true
 
 ## Java 测试
 
-项目要求 JDK 21。设置 `JAVA_HOME` 后，从后端目录运行：
+确认 `JAVA_HOME` 指向 JDK 21，而不是系统上的其他 JDK。从仓库根目录运行：
 
 ```powershell
-cd E:\EchoMind\echomind-saas-agent\EchoMindJava
-$env:JAVA_HOME = "<jdk-21-home>"
-$env:Path = "$env:JAVA_HOME\bin;D:\Docker\Docker\resources\bin;$env:Path"
-$env:DOCKER_HOST = "npipe:////./pipe/dockerDesktopLinuxEngine"
+Push-Location EchoMindJava
+.\mvnw.cmd -version
+.\scripts\download-bge-small-zh-v1.5.ps1
 .\mvnw.cmd test
+Pop-Location
 ```
 
-当前工作树验证结果：
-
-- Backend (GitHub Actions Ubuntu): `272/272` across 57 Surefire suites
-- Frontend: `21/21`
-- Vite production build: passed
-- Live MySQL / Testcontainers skips: `0`
-- Flyway V1-V11 and demo V100: passed on MySQL 8.4
-- Docker image: `echomind-java:bge-verified` built successfully
-- Container BGE smoke: provider loaded, 512-dimensional vector persisted, and
-  search returned a citation without degraded modes
+`mvnw.cmd` 首次运行时会下载 Maven Wrapper JAR；该文件和 `target/` 都是本地构建产物。
+查看 `EchoMindJava/target/surefire-reports` 确认失败、错误和跳过计数。
 
 ## GitHub Actions
 
@@ -64,72 +47,40 @@ $env:DOCKER_HOST = "npipe:////./pipe/dockerDesktopLinuxEngine"
 - Node 22 下的前端测试和 Vite 生产构建。
 - 上传 Surefire、Golden JSON/Markdown 和前端 build artifact。
 
-当前 Draft PR 验证运行：
-
-```text
-https://github.com/294962silent/DeskVerify/actions/runs/44347860640
-```
-
-该运行的后端、Golden artifact 断言和前端 job 均成功，并上传：
-
-- `backend-surefire-reports`
-- `golden-evaluation-reports`
-- `frontend-dist`
-
-本地执行同一 Golden artifact 断言：
+完整测试生成报告后，从根目录执行同一 Golden artifact 断言：
 
 ```powershell
-cd E:\EchoMind\echomind-saas-agent\EchoMindJava
+Push-Location EchoMindJava
 pwsh -NoProfile -File .\scripts\assert-golden-evaluation.ps1 `
   -ReportDirectory .\target\golden-e2e\reports `
   -SurefireDirectory .\target\surefire-reports
+Pop-Location
 ```
-
-### Docker Hub Proxy
-
-本机的 Docker Hub 直连会被异常 DNS 结果和连接超时阻断，而 Clash Verge 的
-`127.0.0.1:7897` 代理可用。Docker Desktop 当前配置为手动代理：
-
-```text
-ProxyHTTPMode=manual
-OverrideProxyHTTP=http://127.0.0.1:7897
-OverrideProxyHTTPS=http://127.0.0.1:7897
-OverrideProxyExclude=localhost,127.0.0.1,::1,hubproxy.docker.internal
-```
-
-修改前的设置备份在：
-
-```text
-C:\Users\MLL\AppData\Roaming\Docker\settings-store.before-dockerhub-proxyfix.json
-```
-
-`docker info` 仍显示 Docker Desktop 内部代理 `http.docker.internal:3128`，这是正常
-架构；`%LOCALAPPDATA%\Docker\log\host\httpproxy.log` 会显示实际使用
-`app settings http_proxy=http://127.0.0.1:7897`。如果 Clash Verge 更换端口，需要
-同步更新 Docker Desktop 的代理设置。
-
-`mvnw.cmd` 在首次运行时会下载 Maven Wrapper JAR；该文件是未跟踪构建产物。
 
 ## 应用运行配置
 
-后端需要以下环境：
+根目录 `start.ps1` 为 Compose 准备 `.env` 和演示会话，不需要手动配置以下变量。
+单独启动 JVM 时需要可访问的 MySQL 与 Redis，并设置：
 
 - `ECHOMIND_DB_URL`
 - `ECHOMIND_DB_USERNAME`
 - `ECHOMIND_DB_PASSWORD`
+- `REDIS_HOST`、`REDIS_PORT`、`REDIS_PASSWORD`
 - `ECHOMIND_JWT_HMAC_SECRET`，Base64 编码且至少 32 解码字节
 - `ECHOMIND_JWT_ISSUER`，默认 `echomind-local`
 - `ECHOMIND_JWT_AUDIENCE`，默认 `echomind-api`
 
-生成测试会话 JWT secret：
+在当前 PowerShell 中生成本地测试 secret，不将它输出到终端：
 
 ```powershell
-$bytes = New-Object byte[] 32
-[Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
-[Convert]::ToBase64String($bytes)
+$env:ECHOMIND_JWT_HMAC_SECRET = [Convert]::ToBase64String(
+    [Security.Cryptography.RandomNumberGenerator]::GetBytes(32)
+)
 ```
 
-不要把真实 secret 或 token 提交到 Git。Vue 演示页从 `sessionStorage` 的 `echomind_access_token` 读取 JWT，并在缺少 token 时阻止 Java 请求。
+根 Compose 的 MySQL 与 Redis 默认不会向宿主机暴露端口。单独启动 JVM 时，应使用开发者
+配置的独立依赖实例，避免在本机同时运行另一个占用 `8080` 的后端。不要把真实 secret
+或 token 提交到 Git。Vue 演示页将 JWT 保存在当前标签页的 `sessionStorage`。
 
 ## BGE ONNX Embedding
 
@@ -138,8 +89,9 @@ $bytes = New-Object byte[] 32
 后端目录下载并校验：
 
 ```powershell
-cd E:\EchoMind\echomind-saas-agent\EchoMindJava
+Push-Location EchoMindJava
 .\scripts\download-bge-small-zh-v1.5.ps1
+Pop-Location
 ```
 
 脚本从 ModelScope 的 BAAI 转换 FP32 ONNX 包下载文件：
@@ -174,13 +126,10 @@ RAG_ONNX_INTRA_OP_THREADS=4
 模型缺失或推理失败时，检索继续执行词法召回，并返回
 `embedding_unavailable` 和 `vector_unavailable`；不会回退到 hash 向量。
 
-Docker 构建会在本地 `EchoMindJava/models/bge-small-zh-v1.5` 查找模型并复制到镜像。
-因此 `docker compose build` 前必须先运行下载脚本；模型目录被 Git 忽略，但不会被子目录
-的 `.dockerignore` 排除。`echomind-java:bge-verified` 已验证镜像内模型 SHA-256
-与本地一致，并在真实容器中完成入库、发布和检索。
-
-模型替换过程中实际遇到的 bug、根因、修复和未覆盖边界见
-[BGE ONNX 迁移实验记录](./experiments/BGE_ONNX_MIGRATION.md)。
+根目录启动脚本会在构建前调用下载脚本。若手动运行 `docker compose build`，
+必须先完成模型下载；模型不随 Git 或 Windows ZIP 分发，但会从本地复制到 Java 镜像。
+Actuator `UP` 只证明应用就绪。要验证 ONNX，运行确实计算向量的导入或 Golden 评测，
+并检查后端 `Loaded BGE ONNX embedding model` 日志和实际检索报告。
 
 ## Commerce Demo Profile
 
@@ -191,12 +140,14 @@ classpath:db/migration
 classpath:db/demo
 ```
 
-设置数据库环境变量和上面的 JWT HMAC secret 后，从后端目录启动：
+根目录 Compose 默认使用 `anthropic,demo`。独立 JVM 开发时，在配置好独立的
+MySQL、Redis 和 JWT 签名密钥后，从仓库根目录运行：
 
 ```powershell
-cd E:\EchoMind\echomind-saas-agent\EchoMindJava
+Push-Location EchoMindJava
 $env:SPRING_PROFILES_ACTIVE = "anthropic,demo"
 .\mvnw.cmd spring-boot:run
+Pop-Location
 ```
 
 也可以使用 `deepseek,demo`；必须保留第二个 profile 作为 `demo`，否则不会加载 V100 演示数据。
@@ -209,15 +160,11 @@ Demo 数据包含三个租户，每个租户有两个 customer account，并配�
 | `globex` | `demo-globex-user` | `customer-001`, `customer-002` |
 | `initech` | `demo-initech-user` | `customer-001`, `customer-002` |
 
-从外部身份系统取得演示 JWT。JWT 必须由 `ECHOMIND_JWT_HMAC_SECRET` 对应的 secret 签名，并包含有效的 `iss`、`aud`、`sub`、`tenant_id`；例如 Acme 用户使用 `sub=demo-acme-user` 和 `tenant_id=acme`。可选 `jti` 会作为 request ID。不要把 token 写入仓库。
-
-```powershell
-$env:DEMO_JWT = Read-Host -Prompt "Bearer token"
-curl.exe -H "Authorization: Bearer $env:DEMO_JWT" `
-  http://localhost:8080/api/v1/commerce/customers/customer-001
-```
-
-更换 `tenant_id` 后，同一个 `customer-001` 路径会返回对应租户的数据；未映射给当前 actor 的 customer ID 返回 `404`，避免泄露其他租户或客户是否存在。
+根目录脚本生成 Acme 演示 JWT，可按 [Windows 发布指南](./RELEASE_WINDOWS_V0_1_0.md#access)
+验证客户接口。独立应用的 JWT 必须由应用配置的 HMAC 密钥签名，包含有效的
+`iss`、`aud`、`sub`、`tenant_id` 和 `exp`。每个租户要用相应已授权的会话；
+不能靠修改 JWT claim 绕过成员关系。对当前 actor 未授权的 customer ID 返回 `404`，
+避免透露其他租户或客户是否存在。
 
 ## Ticket Workflow
 
@@ -319,7 +266,7 @@ POST /api/v1/knowledge/embedding-migrations
 BGE 模型不可用时接口返回 `503 EMBEDDING_UNAVAILABLE`。源版本存在混合 ACL、chunk
 数不一致，或目标版本 ACL 与源版本不同时，迁移会失败而不是发布错误可见性。
 
-### Golden RAG And Handoff Evaluation
+### Golden RAG and Handoff
 
 版本化合成数据集位于：
 
@@ -327,10 +274,14 @@ BGE 模型不可用时接口返回 `503 EMBEDDING_UNAVAILABLE`。源版本存在
 EchoMindJava/src/main/resources/eval/golden/rag-support-golden-v1/
 ```
 
-提交异步评测：
+用已绑定 `TENANT_ADMIN` 的会话提交异步评测；普通 Acme 演示会话没有该权限。
+评测将固定文档导入专用评测租户，建议使用测试实例：
+
+```text
+POST /eval/golden-rag/jobs
+```
 
 ```json
-POST /eval/golden-rag/jobs
 {
   "dataset_version": "rag-support-golden-v1"
 }
@@ -341,14 +292,14 @@ DEV 20 / HOLDOUT 10，转人工切分为 DEV 12 / HOLDOUT 8。服务使用
 `tenant-golden-v1` 导入固定文档，执行真实 MySQL + BGE 检索，并输出
 Recall@1/3/5、MRR@5、引用命中率、ACL 违规、P95 延迟和策略级转人工指标。
 
-Markdown 报告：
+轮询状态和读取 Markdown 报告：
 
 ```text
+GET /eval/jobs/{jobId}
 GET /eval/jobs/{jobId}/report.md
 ```
 
 该数据集是 `synthetic`、非人工审核、非生产代表性样本，V1 外部 LLM token 为 0。
-详见 [Golden RAG And Handoff V1](./experiments/GOLDEN_RAG_HANDOFF_V1.md)。
 
 Release gate 使用同目录下的 `baseline.json`。默认最大相对回退为 `0.02`；
 ACL violation 和 degraded rate 必须为 `0`；转人工 Recall 最低 `0.95`，
@@ -383,14 +334,16 @@ Citation 包含 chunk ID、document ID、标题、版本、section/heading path�
 ## Frontend
 
 ```powershell
-cd E:\EchoMind\echomind-saas-agent\EchoMindFrontend
-npm test
+Push-Location EchoMindFrontend
+npm ci
+npm test -- --run
 npm run build
+Pop-Location
 ```
 
-## 当前分支
+使用 Vite 开发服务器的配置见 [前端 README](../EchoMindFrontend/README.md#local-development)。
 
-- Branch: `codex/echomind-saas-mvp`
-- Last committed baseline: `f8c32cd`
-- BGE ONNX migration changes are currently uncommitted in the working tree.
-- No remote push was performed.
+## 文档范围
+
+仓库内历史实验记录和设计计划用于说明当时的实验或决策，不是当前安装步骤；
+独立 Windows ZIP 只包含当前运行与开发文档。

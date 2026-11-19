@@ -13,6 +13,8 @@
 # Local configuration and secrets
 **/.env
 **/*.log
+/.deskverify/
+/.release/
 
 # Runtime data
 **/data/
