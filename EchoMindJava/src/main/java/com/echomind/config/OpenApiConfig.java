@@ -17,12 +17,10 @@ public class OpenApiConfig {
         return new OpenAPI()
                 .info(new Info()
                         .title("EchoMind Java API")
-                        .version("0.1.0")
+                        .version("0.1.1")
                         .description("EchoMind Java 智能客服系统接口文档，支持在线调试 /chat、/search、知识库、监控和评测接口。")
                         .license(new License().name("Internal Project")))
-                .servers(List.of(
-                        new Server().url("http://localhost:8080").description("Local Java App"),
-                        new Server().url("http://localhost:8081").description("Local Nginx Proxy")
-                ));
+                // The specification is served one path segment below the API root.
+                .servers(List.of(new Server().url("../").description("Current API origin")));
     }
 }

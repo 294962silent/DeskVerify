@@ -58,7 +58,7 @@ DeskVerify 企业 SaaS 智能支持平台/
 └── README.md
 ```
 
-## Windows v0.1.0 一键启动
+## Windows v0.1.1 一键启动
 
 要求：
 
@@ -85,7 +85,7 @@ DeskVerify 企业 SaaS 智能支持平台/
 
 ```text
 前端：http://localhost:5173
-Swagger：http://localhost:8080/docs
+Swagger：http://localhost:5173/api/java/docs 或 http://localhost:8080/docs
 健康检查：http://localhost:8080/actuator/health
 ```
 
@@ -106,9 +106,11 @@ Swagger：http://localhost:8080/docs
 .\start.ps1 -Provider deepseek -DeepSeekApiKey "your_key"
 ```
 
-不提供 API Key 时使用本地降级回复。模型密钥和本地 JWT 不应分享或提交。
+不提供 LLM API Key 时，登录后的订单与履约查询仍读取有权限的真实记录，
+明确说“转人工”可以提交工单。其他问题仍可能使用本地降级回复。
+模型密钥和本地 JWT 不应分享或提交。
 
-详细说明见 [Windows v0.1.0 Release](./docs/RELEASE_WINDOWS_V0_1_0.md) 和
+详细说明见 [Windows v0.1.1 Release](./docs/RELEASE_WINDOWS_V0_1_1.md) 和
 [本地开发与验证](./docs/LOCAL_DEVELOPMENT.md)。
 
 ## 核心接口

@@ -26,6 +26,7 @@ import com.echomind.saas.identity.domain.ActorScope;
 import com.echomind.saas.identity.security.SaasSecurityConfiguration;
 import com.echomind.saas.evaluation.golden.GoldenEvaluationService;
 import com.echomind.saas.rag.application.KnowledgeRetrieval;
+import com.echomind.saas.support.application.ChatSupportActions;
 import com.echomind.skill.SkillManager;
 import com.echomind.tool.KnowledgeToolManager;
 import com.echomind.trace.RequestToolTrace;
@@ -134,6 +135,12 @@ class Task6bSecurityBoundaryTest {
 
     @MockitoBean
     private PrometheusMeterRegistry prometheusMeterRegistry;
+
+    @MockitoBean
+    private ChatSupportActions chatSupportActions;
+
+    @MockitoBean
+    private RequestTraceStore requestTraceStore;
 
     @BeforeEach
     void stubChatDependencies() {

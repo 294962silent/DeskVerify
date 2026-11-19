@@ -21,7 +21,7 @@ const DEFAULT_BACKENDS = {
   java: {
     id: 'java',
     label: 'DeskVerify',
-    baseUrl: runtimeConfig().javaApiUrl || import.meta.env.VITE_JAVA_API_URL || '/api/java',
+    baseUrl: runtimeConfig().javaApiUrl || import.meta.env?.VITE_JAVA_API_URL || '/api/java',
     port: '8080'
   }
 }
@@ -119,9 +119,9 @@ export async function requestSearch(type, settings, query, topK = 5) {
   return requestJson(type, backendMeta(type, settings).baseUrl, `/search?${params}`, { method: 'POST' })
 }
 
-export async function requestChat(type, settings, message) {
+export async function requestChat(type, settings, message, customerId) {
   const meta = backendMeta(type, settings)
-  const payload = buildChatPayload(type, settings, message)
+  const payload = buildChatPayload(settings, message, customerId)
   const raw = await requestJson(type, meta.baseUrl, '/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -153,10 +153,11 @@ export async function uploadKnowledge(type, settings, file) {
   })
 }
 
-function buildChatPayload(type, settings, message) {
+function buildChatPayload(settings, message, customerId) {
   return {
     message,
-    conv_id: settings.conversationId || undefined
+    conv_id: settings.conversationId || undefined,
+    customer_id: customerId || undefined
   }
 }
 
@@ -164,7 +165,7 @@ function normalizeChatResponse(type, raw) {
   const rag = normalizeChatRagFields(raw)
   return {
     backend: type,
-    conversationId: raw.conversation_id || raw.conversationId || '',
+    conversationId: raw.conv_id || raw.conversation_id || raw.conversationId || '',
     requestId: raw.request_id || raw.requestId || '',
     response: raw.response || '',
     intent: raw.intent || 'other',
@@ -179,6 +180,7 @@ function normalizeChatResponse(type, raw) {
     intentConfidence: Number(raw.intent_confidence ?? raw.intentConfidence ?? 0),
     intentSourceScores: raw.intent_source_scores || raw.intentSourceScores || {},
     escalated: Boolean(raw.escalated),
+    handoffTicketId: raw.handoff_ticket_id || raw.handoffTicketId || '',
     latencyMs: Number(raw.latency_ms ?? raw.latencyMs ?? 0),
     knowledgeUsed: Boolean(raw.knowledge_used ?? raw.knowledgeUsed),
     citations: rag.citations,

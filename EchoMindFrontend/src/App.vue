@@ -162,7 +162,7 @@
               </label>
               <label>
                 <span>Java 访问令牌</span>
-                <input v-model="accessToken" type="password" autocomplete="off" @change="applyAccessToken" placeholder="仅在当前浏览器会话中使用" />
+                <input v-model="accessTokenInput" type="password" autocomplete="off" @change="applyAccessToken" placeholder="仅在当前浏览器会话中使用" />
               </label>
               <label>
                 <span>会话 ID</span>
@@ -322,10 +322,10 @@
           <p>提交异步评测任务，实时查看进度、失败原因和已持久化的历史结果。</p>
         </div>
         <div class="evaluation-actions">
-          <button class="quiet-button" @click="runGoldenEvaluation" :disabled="busy">
-            {{ busy ? '运行中...' : '运行 Golden RAG 评测' }}
+          <button class="quiet-button" @click="runGoldenEvaluation" :disabled="evaluationBusy || !accessToken">
+            {{ evaluationBusy ? '运行中...' : '运行 Golden RAG 评测' }}
           </button>
-          <button @click="runEvaluation" :disabled="busy">{{ busy ? '运行中...' : '运行通用评测' }}</button>
+          <button @click="runEvaluation" :disabled="evaluationBusy || !accessToken">{{ evaluationBusy ? '运行中...' : '运行通用评测' }}</button>
         </div>
       </div>
 
@@ -337,7 +337,7 @@
       <section v-if="evalError" class="workspace-card evaluation-error" role="alert">
         <div class="card-heading"><div><span class="kicker">Evaluation failed</span><h2>评测未完成</h2></div></div>
         <p>{{ evalError }}</p>
-        <button @click="runEvaluation" :disabled="busy">重新运行</button>
+        <button @click="runEvaluation" :disabled="evaluationBusy || !accessToken">重新运行</button>
       </section>
 
       <div v-if="goldenReport" class="evaluation-content golden-evaluation">
@@ -495,12 +495,14 @@ import {
   normalizeGoldenRagReport
 } from './lib/goldenEvaluation.js'
 import { getAccessToken, saveAccessToken } from './lib/auth.js'
+import { createEvaluationSession } from './lib/evaluationSession.js'
 import { resolveSessionCustomerId, resolveSessionRoles } from './lib/tickets.js'
 import TicketPanel from './components/TicketPanel.vue'
 import RagPanel from './components/RagPanel.vue'
 
 const settings = reactive(createInitialSettings())
 const accessToken = ref(getAccessToken())
+const accessTokenInput = ref(accessToken.value)
 const activeView = ref('chat')
 const messages = ref([])
 const draft = ref('')
@@ -519,15 +521,18 @@ const monitorData = ref({ agent_stats: {}, tool_stats: {}, active_alerts: [], su
 const skillsData = ref({ count: 0, skills: [], errors: [] })
 const lastResponse = ref(null)
 const lastTrace = ref(null)
-const evalData = ref(null)
-const evalJob = ref(null)
-const evalError = ref('')
 const toast = ref('')
 let toastTimer
 let messageSequence = 0
 let sidebarObserver
-let evaluationPollTimer
-let evaluationPollGeneration = 0
+
+const evaluation = createEvaluationSession({
+  readLatest: async () => (await requestEvaluationJobs(settings.backend, settings, 1)).items?.[0],
+  readJob: (jobId) => requestEvaluationJob(settings.backend, settings, jobId),
+  readMarkdown: (jobId) => requestGoldenRagMarkdown(settings.backend, settings, jobId),
+  notify: showToast,
+})
+const { data: evalData, job: evalJob, error: evalError, submitting: evaluationBusy } = evaluation
 
 const currentBackend = computed(() => backendMeta(settings.backend, settings))
 const ticketCustomerId = computed(() =>
@@ -557,9 +562,9 @@ const evaluationStatusLabel = computed(() => ({
 const goldenReport = computed(() => normalizeGoldenRagReport(evalData.value))
 
 watch(() => settings.conversationId, persist)
+watch(accessToken, (token) => evaluation.refresh(Boolean(token)), { immediate: true, flush: 'sync' })
 onMounted(() => {
   refreshConsole()
-  loadLatestEvaluation()
   updateSidebarHeight()
   if (typeof ResizeObserver !== 'undefined') {
     sidebarObserver = new ResizeObserver(updateSidebarHeight)
@@ -570,16 +575,16 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   sidebarObserver?.disconnect?.()
-  evaluationPollGeneration += 1
-  clearTimeout(evaluationPollTimer)
+  evaluation.dispose()
   window.removeEventListener('resize', updateSidebarHeight)
 })
 
 function persist() { saveSettings(settings) }
 
 function applyAccessToken() {
-  saveAccessToken(accessToken.value)
-  accessToken.value = getAccessToken()
+  saveAccessToken(accessTokenInput.value)
+  accessTokenInput.value = getAccessToken()
+  accessToken.value = accessTokenInput.value
   healthOk.value = false
   healthLabel.value = '未检查'
   refreshConsole()
@@ -653,7 +658,7 @@ async function sendMessage() {
   draft.value = ''
   busy.value = true
   try {
-    const response = await requestChat(settings.backend, settings, content)
+    const response = await requestChat(settings.backend, settings, content, ticketCustomerId.value)
     if (response.conversationId && !settings.conversationId) {
       settings.conversationId = response.conversationId
       persist()
@@ -731,113 +736,33 @@ async function handleUpload(event) {
   } finally { busy.value = false }
 }
 
-async function runEvaluation() {
-  busy.value = true
-  evalError.value = ''
-  try {
-    const job = await startEvaluation(settings.backend, settings)
-    evalJob.value = job
-    evalData.value = null
-    showToast('评测任务已提交')
-    await pollEvaluation(job.job_id, ++evaluationPollGeneration)
-  } catch (error) {
-    evalError.value = error.message
-    statusText.value = error.message
-    showToast('评测任务提交失败')
-  } finally { busy.value = false }
+function runEvaluation() {
+  return evaluation.submit(
+    () => startEvaluation(settings.backend, settings),
+    '评测任务已提交',
+    '评测任务提交失败'
+  )
 }
 
-async function runGoldenEvaluation() {
-  busy.value = true
-  evalError.value = ''
-  try {
-    const job = await startGoldenRagEvaluation(
-      settings.backend,
-      settings,
-      DEFAULT_GOLDEN_DATASET
-    )
-    evalJob.value = job
-    evalData.value = null
-    showToast('Golden RAG 评测任务已提交')
-    await pollEvaluation(job.job_id, ++evaluationPollGeneration)
-  } catch (error) {
-    evalError.value = error.message
-    statusText.value = error.message
-    showToast('Golden RAG 评测提交失败')
-  } finally {
-    busy.value = false
-  }
+function runGoldenEvaluation() {
+  return evaluation.submit(
+    () => startGoldenRagEvaluation(settings.backend, settings, DEFAULT_GOLDEN_DATASET),
+    'Golden RAG 评测任务已提交',
+    'Golden RAG 评测提交失败'
+  )
 }
 
 async function downloadGoldenEvaluationReport() {
-  if (!evalJob.value?.job_id) return
-  try {
-    const markdown = await requestGoldenRagMarkdown(
-      settings.backend,
-      settings,
-      evalJob.value.job_id
-    )
-    const url = URL.createObjectURL(
-      new Blob([markdown], { type: 'text/markdown;charset=utf-8' })
-    )
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `${goldenReport.value?.datasetVersion || 'golden-evaluation'}.md`
-    link.click()
-    URL.revokeObjectURL(url)
-  } catch (error) {
-    showToast(`报告下载失败：${error.message}`)
-  }
-}
-
-async function loadLatestEvaluation() {
-  const generation = ++evaluationPollGeneration
-  try {
-    const data = await requestEvaluationJobs(settings.backend, settings, 1)
-    if (generation !== evaluationPollGeneration) return
-    const latest = data.items?.[0]
-    if (!latest) return
-    evalJob.value = latest
-    if (latest.status === 'succeeded') {
-      evalData.value = latest.report
-      evalError.value = ''
-    } else if (latest.status === 'failed') {
-      evalError.value = latest.error || '评测任务失败，请查看服务日志。'
-      if (latest.report?.gate) {
-        evalData.value = latest.report
-      }
-    } else {
-      await pollEvaluation(latest.job_id, generation)
-    }
-  } catch (error) {
-    evalError.value = `无法读取评测任务：${error.message}`
-  }
-}
-
-async function pollEvaluation(jobId, generation) {
-  clearTimeout(evaluationPollTimer)
-  try {
-    const job = await requestEvaluationJob(settings.backend, settings, jobId)
-    if (generation !== evaluationPollGeneration) return
-    evalJob.value = job
-    if (job.status === 'succeeded') {
-      evalData.value = job.report
-      evalError.value = ''
-      showToast('评测完成')
-      return
-    }
-    if (job.status === 'failed') {
-      evalError.value = job.error || '评测任务失败，请查看服务日志。'
-      if (job.report?.gate) {
-        evalData.value = job.report
-      }
-      showToast('评测运行失败')
-      return
-    }
-    evaluationPollTimer = setTimeout(() => pollEvaluation(jobId, generation), 1000)
-  } catch (error) {
-    evalError.value = `读取评测进度失败：${error.message}`
-  }
+  const markdown = await evaluation.download()
+  if (markdown == null) return
+  const url = URL.createObjectURL(
+    new Blob([markdown], { type: 'text/markdown;charset=utf-8' })
+  )
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `${goldenReport.value?.datasetVersion || 'golden-evaluation'}.md`
+  link.click()
+  URL.revokeObjectURL(url)
 }
 
 async function loadToolTrace(requestId) {

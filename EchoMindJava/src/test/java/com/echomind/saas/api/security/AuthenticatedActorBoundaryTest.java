@@ -30,6 +30,8 @@ import com.echomind.saas.identity.domain.TenantScopedActorKey;
 import com.echomind.saas.identity.domain.UserId;
 import com.echomind.saas.identity.security.SaasSecurityConfiguration;
 import com.echomind.saas.rag.application.KnowledgeRetrieval;
+import com.echomind.saas.support.application.ChatSupportActions;
+import com.echomind.trace.RequestTraceStore;
 import com.echomind.skill.SkillManager;
 import com.echomind.tool.KnowledgeToolManager;
 import com.nimbusds.jose.JWSAlgorithm;
@@ -130,6 +132,12 @@ class AuthenticatedActorBoundaryTest {
 
     @MockitoBean
     private PrometheusMeterRegistry prometheusMeterRegistry;
+
+    @MockitoBean
+    private ChatSupportActions chatSupportActions;
+
+    @MockitoBean
+    private RequestTraceStore requestTraceStore;
 
     @BeforeEach
     void setUpControllerDependencies() {
