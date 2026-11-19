@@ -1,0 +1,25 @@
+{
+  "dataset_version": "rag-support-golden-v1",
+  "schema_version": 1,
+  "created_on": "2026-11-18",
+  "embedding_model": "bge-small-zh-v1.5-onnx-fp32",
+  "dataset_file_sha256": "d394771cd02c81d230225979f7015c1ef6b4e2f850ddfefb9ef70e59926cd968",
+  "document_count": 12,
+  "chunk_count": 12,
+  "retrieval_case_count": 30,
+  "handoff_case_count": 20,
+  "retrieval_split_counts": {
+    "DEV": 20,
+    "HOLDOUT": 10
+  },
+  "handoff_split_counts": {
+    "DEV": 12,
+    "HOLDOUT": 8
+  },
+  "provenance": {
+    "kind": "synthetic",
+    "human_reviewed": false,
+    "statistically_representative": false,
+    "external_llm_tokens": 0
+  }
+}

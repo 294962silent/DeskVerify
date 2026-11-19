@@ -1,6 +1,8 @@
-# EchoMind SaaS Platform
+# DeskVerify SaaS Platform
 
-EchoMind 是一个面向企业 SaaS 产品支持场景演进的智能客服平台。项目采用 Java/Spring Boot 后端与 Vue 3 前端，保留多智能体路由、知识库检索、会话记忆、回答校验和评测能力，支持后续扩展产品咨询、技术支持、账户与订阅管理等企业服务场景。
+DeskVerify（原 EchoMind）是一个面向企业 SaaS 客服场景的 RAG Agent 平台。项目采用 Java/Spring Boot 后端与 Vue 3 前端，将多智能体路由、版本化知识检索、会话记忆、业务工具、回答校验和评测门禁整合为可追溯、可回归的客服后端。
+
+> 为兼容现有数据库、类和构建配置，源码目录及 `com.echomind` Java 包名暂时保留；对外的项目名称统一使用 `DeskVerify`。
 
 > 当前仓库包含 Java 后端和 Vue 前端；Python 版本不在本仓库中。前端仍保留对 Python/Java 两种后端响应格式的兼容适配。
 >
@@ -16,7 +18,9 @@ EchoMind 是一个面向企业 SaaS 产品支持场景演进的智能客服平�
   混合检索、RRF、重排、结构化引用和显式降级。
 - **多轮会话记忆**：使用 Redis 保存工作记忆；遗留 JSON 存储仍待迁移，新租户数据已使用 MySQL/Flyway。
 - **回答质量校验**：对回答进行可信度、知识库依据和人工转接判断。
-- **可重复评测**：保留意图识别、Macro-F1、LLM Judge、baseline 对比和异步评测任务。
+- **可重复评测**：保留意图识别、Macro-F1、LLM Judge、baseline 对比，并新增
+  `rag-support-golden-v1` 小型方法验证数据集，覆盖 Recall@K、引用命中率、ACL、
+  P95 延迟和策略级转人工指标。
 - **可观测性**：提供 Actuator、Micrometer、Prometheus 指标、调用链路记录和监控摘要。
 - **身份与隔离**：JWT Resource Server、租户成员校验、角色授权、Trace/评测所有权隔离。
 - **可靠平台基座**：MySQL 幂等记录、租户级 Inbox、事务 Outbox、claim/lease fencing。
@@ -37,7 +41,7 @@ EchoMind 是一个面向企业 SaaS 产品支持场景演进的智能客服平�
 ## 项目结构
 
 ```text
-EchoMind 企业 SaaS 智能支持平台/
+DeskVerify 企业 SaaS 智能支持平台/
 ├── EchoMindJava/                 # Java/Spring Boot 后端
 │   ├── src/main/java/             # 对话、Agent、RAG、记忆、评测和监控
 │   ├── skills/                    # Agent Skill 与领域提示词
@@ -139,6 +143,8 @@ http://localhost:5173
 | GET | `/monitor` | 查看监控摘要 |
 | POST | `/eval/jobs` | 提交异步评测任务 |
 | GET | `/eval/jobs/{jobId}` | 查询评测任务 |
+| POST | `/eval/golden-rag/jobs` | 提交版本化 Golden RAG/转人工评测 |
+| GET | `/eval/jobs/{jobId}/report.md` | 下载 Golden 评测 Markdown 报告 |
 | POST | `/eval/run` | 运行兼容评测接口 |
 
 ## 企业 SaaS 场景扩展方向
@@ -161,7 +167,28 @@ curl.exe -X POST http://localhost:8080/eval/run `
   -d '{}'
 ```
 
-异步评测推荐使用 `/eval/jobs`，再通过任务 ID 查询进度和最终报告。评测数据、baseline 和详细实现请查看 `EchoMindJava/src/main/java/com/echomind/evaluation/`。
+异步评测推荐使用 `/eval/jobs`，再通过任务 ID 查询进度和最终报告。版本化 RAG
+评测使用 `/eval/golden-rag/jobs`：
+
+```json
+{
+  "dataset_version": "rag-support-golden-v1"
+}
+```
+
+该数据集包含 30 条检索案例和 20 条转人工案例，采用 DEV/HOLDOUT 切分，固定
+文档、版本、Chunk ID、checksum 和期望引用。当前为合成方法验证数据，不声称真实
+用户泛化能力，V1 外部 LLM token 消耗为 0。实验记录见
+[Golden RAG And Handoff V1](./docs/experiments/GOLDEN_RAG_HANDOFF_V1.md)。
+
+该评测现在包含 release gate：ACL violation 必须为 0，DEV/HOLDOUT 的
+Recall@5、MRR@5 和引用命中率相对版本化 baseline 最多下降 2 个百分点，
+转人工 Recall 不低于 0.95，误转人工率和漏转人工率不高于 0.10。P95 在 V1
+作为 2000 ms 告警项，不阻塞小规模基准。门禁失败的任务状态为 `failed`，但
+JSON/Markdown 证据仍会保存并可下载。
+
+GitHub Actions 会在真实 MySQL 8.4 和 BGE ONNX 上执行完整后端测试，校验
+Golden E2E 没有被 skip，然后上传 Surefire、Golden 报告和前端构建 artifact。
 
 ## 配置与安全
 

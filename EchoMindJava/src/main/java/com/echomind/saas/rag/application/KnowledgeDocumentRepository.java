@@ -58,6 +58,11 @@ public interface KnowledgeDocumentRepository {
             int expectedChunkCount,
             String embeddingModel);
 
+    List<KnowledgeChunk> versionChunks(
+            TenantId tenantId,
+            String documentId,
+            int versionNumber);
+
     List<LexicalSearchHit> lexicalSearch(
             KnowledgeSearchScope scope,
             String query,

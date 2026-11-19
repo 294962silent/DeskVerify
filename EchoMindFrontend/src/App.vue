@@ -1,9 +1,9 @@
 <template>
   <main :class="['app-shell', `app-shell-${activeView}`]">
     <header class="topbar">
-      <a class="brand" href="#" aria-label="EchoMind 首页" @click.prevent="activeView = 'chat'">
+      <a class="brand" href="#" aria-label="DeskVerify 首页" @click.prevent="activeView = 'chat'">
         <span class="brand-mark">E</span>
-        <span class="brand-name">EchoMind</span>
+        <span class="brand-name">DeskVerify</span>
       </a>
 
       <nav class="view-nav" aria-label="工作区">
@@ -326,7 +326,12 @@
           <h1>评测 Agent</h1>
           <p>提交异步评测任务，实时查看进度、失败原因和已持久化的历史结果。</p>
         </div>
-        <button @click="runEvaluation" :disabled="busy">{{ busy ? '运行中...' : '运行评测' }}</button>
+        <div class="evaluation-actions">
+          <button class="quiet-button" @click="runGoldenEvaluation" :disabled="busy">
+            {{ busy ? '运行中...' : '运行 Golden RAG 评测' }}
+          </button>
+          <button @click="runEvaluation" :disabled="busy">{{ busy ? '运行中...' : '运行通用评测' }}</button>
+        </div>
       </div>
 
       <section v-if="evalJob" class="workspace-card evaluation-job-status">
@@ -340,7 +345,109 @@
         <button @click="runEvaluation" :disabled="busy">重新运行</button>
       </section>
 
-      <div v-if="evalData" class="evaluation-content">
+      <div v-if="goldenReport" class="evaluation-content golden-evaluation">
+        <section class="workspace-card">
+          <div class="card-heading">
+            <div>
+              <span class="kicker">Versioned golden dataset</span>
+              <h2>{{ goldenReport.datasetVersion }}</h2>
+            </div>
+            <button class="quiet-button" @click="downloadGoldenEvaluationReport">下载 Markdown</button>
+          </div>
+          <div class="evaluation-metadata">
+            <div><span>Dataset SHA-256</span><strong>{{ goldenReport.datasetSha256 }}</strong></div>
+            <div><span>Embedding model</span><strong>{{ goldenReport.embeddingModel }}</strong></div>
+            <div><span>Code SHA</span><strong>{{ goldenReport.codeSha }}</strong></div>
+            <div><span>External LLM tokens</span><strong>{{ goldenReport.provenance.externalLlmTokens }}</strong></div>
+            <div><span>Provenance</span><strong>{{ goldenReport.provenance.kind }}</strong></div>
+            <div><span>Human reviewed</span><strong>{{ goldenReport.provenance.humanReviewed }}</strong></div>
+          </div>
+          <p class="scope-note">
+            合成数据，仅用于方法有效性和回归验证，不代表真实用户分布或生产质量。
+          </p>
+          <div
+            v-if="goldenReport.gate.available"
+            class="release-gate"
+            :class="goldenReport.gate.passed ? 'release-gate-passed' : 'release-gate-failed'"
+          >
+            <div class="release-gate-heading">
+              <div>
+                <span class="kicker">Release gate</span>
+                <strong>{{ goldenReport.gate.passed ? 'PASSED' : 'FAILED' }}</strong>
+              </div>
+              <p>
+                Blocking failures {{ goldenReport.gate.blockingFailures }}
+                · Advisory warnings {{ goldenReport.gate.advisoryWarnings }}
+              </p>
+            </div>
+            <div v-if="goldenReport.failedGateChecks.length" class="release-gate-checks">
+              <p v-for="check in goldenReport.failedGateChecks" :key="check.id">
+                <strong>{{ check.id }}</strong>
+                <span>{{ check.split }} · expected {{ check.expectation }} · observed {{ check.observed }}</span>
+              </p>
+            </div>
+            <div v-if="goldenReport.advisoryGateChecks.length" class="release-gate-advisory">
+              <p v-for="check in goldenReport.advisoryGateChecks" :key="check.id">
+                Advisory: {{ check.id }} expected {{ check.expectation }} · observed {{ check.observed }}
+              </p>
+            </div>
+          </div>
+          <p v-else class="scope-note">该历史报告未包含 release gate 信息。</p>
+        </section>
+        <div class="evaluation-layout">
+          <section class="workspace-card">
+            <div class="card-heading"><div><span class="kicker">Retrieval</span><h2>检索指标</h2></div></div>
+            <div class="evaluation-table-wrap">
+              <table class="evaluation-table">
+                <thead><tr><th>Split</th><th>Recall@5</th><th>MRR@5</th><th>Citation</th><th>ACL violation</th><th>P95 ms</th></tr></thead>
+                <tbody>
+                  <tr v-for="row in goldenReport.retrievalMetrics" :key="row.split">
+                    <td>{{ row.split }}</td>
+                    <td>{{ formatPercent(row.recall_at5) }}</td>
+                    <td>{{ Number(row.mrr_at5 || 0).toFixed(3) }}</td>
+                    <td>{{ formatPercent(row.citation_hit_rate) }}</td>
+                    <td>{{ row.acl_violations }}</td>
+                    <td>{{ row.p95_latency_ms }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+          <section class="workspace-card">
+            <div class="card-heading"><div><span class="kicker">Handoff policy</span><h2>转人工指标</h2></div></div>
+            <div class="evaluation-table-wrap">
+              <table class="evaluation-table">
+                <thead><tr><th>Split</th><th>Accuracy</th><th>Precision</th><th>Recall</th><th>False escalation</th><th>Missed</th></tr></thead>
+                <tbody>
+                  <tr v-for="row in goldenReport.handoffMetrics" :key="row.split">
+                    <td>{{ row.split }}</td>
+                    <td>{{ formatPercent(row.accuracy) }}</td>
+                    <td>{{ formatPercent(row.precision) }}</td>
+                    <td>{{ formatPercent(row.recall) }}</td>
+                    <td>{{ formatPercent(row.false_escalation_rate) }}</td>
+                    <td>{{ formatPercent(row.missed_handoff_rate) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+        <section class="workspace-card">
+          <div class="card-heading">
+            <div><span class="kicker">Failures and boundaries</span><h2>失败案例与限制</h2></div>
+          </div>
+          <p>检索失败 {{ goldenReport.failedRetrievalCases.length }} 条；转人工失败 {{ goldenReport.failedHandoffCases.length }} 条。</p>
+          <div v-if="goldenReport.failedRetrievalCases.length" class="failures-list">
+            <p v-for="item in goldenReport.failedRetrievalCases" :key="item.case_id">
+              {{ item.case_id }} · expected rank {{ item.expected_rank }} · top {{ item.top_chunk_id || 'none' }}
+            </p>
+          </div>
+          <div class="limitations">
+            <p v-for="(item, index) in goldenReport.limitations" :key="index">{{ item }}</p>
+          </div>
+        </section>
+      </div>
+      <div v-else-if="evalData" class="evaluation-content">
         <div class="evaluation-summary">
           <div class="score-hero"><span>Pass rate</span><strong>{{ formatPercent(evalData.pass_rate) }}</strong><small>{{ evalData.passed }} / {{ evalData.total }} cases passed</small></div>
           <div><span>通过</span><strong>{{ evalData.passed }}</strong></div>
@@ -374,6 +481,7 @@ import {
   createInitialSettings,
   reloadSkills,
   requestChat,
+  requestGoldenRagMarkdown,
   requestHealth,
   requestKnowledgeStats,
   requestMonitor,
@@ -384,8 +492,13 @@ import {
   requestEvaluationJobs,
   saveSettings,
   startEvaluation,
+  startGoldenRagEvaluation,
   uploadKnowledge
 } from './lib/backends'
+import {
+  DEFAULT_GOLDEN_DATASET,
+  normalizeGoldenRagReport
+} from './lib/goldenEvaluation.js'
 import { getAccessToken, saveAccessToken } from './lib/auth.js'
 import { resolveSessionCustomerId, resolveSessionRoles } from './lib/tickets.js'
 import TicketPanel from './components/TicketPanel.vue'
@@ -446,6 +559,7 @@ const evaluationStatusLabel = computed(() => ({
   succeeded: '评测已完成',
   failed: '评测失败'
 }[evalJob.value?.status] || '评测任务'))
+const goldenReport = computed(() => normalizeGoldenRagReport(evalData.value))
 
 watch(() => settings.conversationId, persist)
 onMounted(() => {
@@ -674,6 +788,49 @@ async function runEvaluation() {
   } finally { busy.value = false }
 }
 
+async function runGoldenEvaluation() {
+  busy.value = true
+  evalError.value = ''
+  try {
+    const job = await startGoldenRagEvaluation(
+      settings.backend,
+      settings,
+      DEFAULT_GOLDEN_DATASET
+    )
+    evalJob.value = job
+    evalData.value = null
+    showToast('Golden RAG 评测任务已提交')
+    await pollEvaluation(job.job_id, ++evaluationPollGeneration)
+  } catch (error) {
+    evalError.value = error.message
+    statusText.value = error.message
+    showToast('Golden RAG 评测提交失败')
+  } finally {
+    busy.value = false
+  }
+}
+
+async function downloadGoldenEvaluationReport() {
+  if (!evalJob.value?.job_id) return
+  try {
+    const markdown = await requestGoldenRagMarkdown(
+      settings.backend,
+      settings,
+      evalJob.value.job_id
+    )
+    const url = URL.createObjectURL(
+      new Blob([markdown], { type: 'text/markdown;charset=utf-8' })
+    )
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${goldenReport.value?.datasetVersion || 'golden-evaluation'}.md`
+    link.click()
+    URL.revokeObjectURL(url)
+  } catch (error) {
+    showToast(`报告下载失败：${error.message}`)
+  }
+}
+
 async function loadLatestEvaluation() {
   const generation = ++evaluationPollGeneration
   try {
@@ -687,6 +844,9 @@ async function loadLatestEvaluation() {
       evalError.value = ''
     } else if (latest.status === 'failed') {
       evalError.value = latest.error || '评测任务失败，请查看服务日志。'
+      if (latest.report?.gate) {
+        evalData.value = latest.report
+      }
     } else {
       await pollEvaluation(latest.job_id, generation)
     }
@@ -709,6 +869,9 @@ async function pollEvaluation(jobId, generation) {
     }
     if (job.status === 'failed') {
       evalError.value = job.error || '评测任务失败，请查看服务日志。'
+      if (job.report?.gate) {
+        evalData.value = job.report
+      }
       showToast('评测运行失败')
       return
     }

@@ -24,6 +24,8 @@ import com.echomind.saas.identity.application.ActorScopeResolver;
 import com.echomind.saas.identity.application.TenantAccessDeniedException;
 import com.echomind.saas.identity.domain.ActorRole;
 import com.echomind.saas.identity.domain.ActorScope;
+import com.echomind.saas.evaluation.domain.EvaluationJob;
+import com.echomind.saas.identity.domain.TenantId;
 import com.echomind.saas.identity.domain.TenantScopedActorKey;
 import com.echomind.saas.identity.domain.UserId;
 import com.echomind.saas.identity.security.SaasSecurityConfiguration;
@@ -68,6 +70,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -249,6 +252,61 @@ class AuthenticatedActorBoundaryTest {
         assertThat(actorKeyCaptor.getValue().value()).isEqualTo("tenant:tenant-a/user:user-1");
     }
 
+    @Test
+    void tenantAdminCanSubmitGoldenRagEvaluationJob() throws Exception {
+        when(evaluationJobService.submitGoldenRag(
+                eq("rag-support-golden-v1"), any(ActorScope.class)))
+                .thenReturn(new EvaluationJob(
+                        "golden-job-1",
+                        new TenantId("tenant-a"),
+                        new UserId("user-1"),
+                        "queued",
+                        "queued",
+                        0,
+                        "2026-11-18T00:00:00Z",
+                        null,
+                        null,
+                        null,
+                        null));
+
+        mvc.perform(post("/eval/golden-rag/jobs")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer "
+                                + signedToken(TEST_SECRET, "user-1", "tenant-a"))
+                        .content("""
+                                {"dataset_version":"rag-support-golden-v1"}
+                                """))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.job_id").value("golden-job-1"))
+                .andExpect(jsonPath("$.status").value("queued"));
+    }
+
+    @Test
+    void customerCannotSubmitGoldenRagEvaluationJob() throws Exception {
+        mvc.perform(post("/eval/golden-rag/jobs")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer "
+                                + signedToken(TEST_SECRET, "customer-1", "tenant-a"))
+                        .content("""
+                                {"dataset_version":"rag-support-golden-v1"}
+                                """))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void tenantAdminCanReadGoldenRagMarkdownReport() throws Exception {
+        when(evaluationJobService.markdownReport(
+                eq("golden-job-1"), any(ActorScope.class)))
+                .thenReturn("# Golden report\n");
+
+        mvc.perform(get("/eval/jobs/golden-job-1/report.md")
+                        .header("Authorization", "Bearer "
+                                + signedToken(TEST_SECRET, "user-1", "tenant-a")))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("text/markdown"))
+                .andExpect(content().string("# Golden report\n"));
+    }
+
     @ParameterizedTest(name = "{0}")
     @MethodSource("malformedClaimTokens")
     void malformedOrUntrustedClaimsReturnStableUnauthorizedEnvelope(
@@ -318,6 +376,15 @@ class AuthenticatedActorBoundaryTest {
                 if (Set.of("denied-user", "inactive-user", "disabled-user").contains(userId.value())
                         || "tenant-disabled".equals(tenantId.value())) {
                     throw new TenantAccessDeniedException("raw membership diagnostic");
+                }
+                if ("customer-1".equals(userId.value())
+                        && "tenant-a".equals(tenantId.value())) {
+                    return new ActorScope(
+                            userId,
+                            tenantId,
+                            Set.of(ActorRole.CUSTOMER),
+                            Set.of("customer-1"),
+                            requestId);
                 }
                 if (!"user-1".equals(userId.value())
                         || !Set.of("tenant-a", "tenant-b").contains(tenantId.value())) {

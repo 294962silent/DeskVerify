@@ -5,6 +5,9 @@ import com.echomind.config.EchoMindProperties;
 import com.echomind.saas.architecture.LegacySaaSBridge;
 import com.echomind.saas.api.error.ResourceNotFoundException;
 import com.echomind.saas.evaluation.domain.EvaluationJob;
+import com.echomind.saas.evaluation.golden.GoldenDatasetException;
+import com.echomind.saas.evaluation.golden.GoldenEvaluationReport;
+import com.echomind.saas.evaluation.golden.GoldenEvaluationService;
 import com.echomind.saas.identity.domain.ActorScope;
 import com.echomind.saas.identity.domain.TenantId;
 import com.echomind.saas.identity.domain.TenantScopedActorKey;
@@ -29,6 +32,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 /**
@@ -41,8 +45,10 @@ public class EvaluationJobService {
 
     private static final Logger log = LoggerFactory.getLogger(EvaluationJobService.class);
     private static final int MAX_STORED_JOBS_PER_OWNER = 20;
+    private static final long CLOSE_TIMEOUT_SECONDS = 5;
 
     private final EndToEndEvaluator evaluator;
+    private final GoldenEvaluationService goldenEvaluationService;
     private final ObjectMapper objectMapper;
     private final EchoMindProperties properties;
     private final Map<String, Map<String, Object>> jobs = new ConcurrentHashMap<>();
@@ -52,8 +58,13 @@ public class EvaluationJobService {
         return thread;
     });
 
-    public EvaluationJobService(EndToEndEvaluator evaluator, ObjectMapper objectMapper, EchoMindProperties properties) {
+    public EvaluationJobService(
+            EndToEndEvaluator evaluator,
+            GoldenEvaluationService goldenEvaluationService,
+            ObjectMapper objectMapper,
+            EchoMindProperties properties) {
         this.evaluator = evaluator;
+        this.goldenEvaluationService = goldenEvaluationService;
         this.objectMapper = objectMapper;
         this.properties = properties;
     }
@@ -130,6 +141,25 @@ public class EvaluationJobService {
         return publicJob(job);
     }
 
+    public synchronized EvaluationJob submitGoldenRag(
+            String datasetVersion,
+            ActorScope actor) {
+        if (actor == null) {
+            throw new IllegalArgumentException("authenticated actor is required");
+        }
+        if (datasetVersion == null || datasetVersion.isBlank()) {
+            throw new IllegalArgumentException("dataset version is required");
+        }
+        String jobId = UUID.randomUUID().toString();
+        Map<String, Object> job = newJob(jobId, actor, "golden_rag");
+        job.put("dataset_version", datasetVersion);
+        jobs.put(jobId, job);
+        trim();
+        save();
+        executor.submit(() -> executeGoldenRag(jobId, datasetVersion));
+        return publicJob(job);
+    }
+
     public EvaluationJob get(String jobId, ActorScope actor) {
         if (actor == null) {
             throw new IllegalArgumentException("authenticated actor is required");
@@ -158,19 +188,51 @@ public class EvaluationJobService {
                 .toList();
     }
 
-    @PreDestroy
-    public synchronized void close() {
-        executor.shutdownNow();
-        for (Map<String, Object> job : jobs.values()) {
-            String status = String.valueOf(job.get("status"));
-            if ("queued".equals(status) || "running".equals(status)) {
-                job.put("status", "failed");
-                job.put("phase", "interrupted");
-                job.put("error", "评测任务因服务停止而中断，请重新运行。");
-                job.put("finished_at", now());
-            }
+    public String markdownReport(String jobId, ActorScope actor) {
+        if (actor == null) {
+            throw new IllegalArgumentException("authenticated actor is required");
         }
-        save();
+        Map<String, Object> job = jobs.get(jobId);
+        if (job == null || !ownedBy(job, actor)) {
+            throw new ResourceNotFoundException();
+        }
+        String path = nullableString(job.get("report_markdown_path"));
+        if (path == null || path.isBlank()) {
+            throw new ResourceNotFoundException();
+        }
+        try {
+            return Files.readString(Path.of(path));
+        } catch (Exception exception) {
+            throw new ResourceNotFoundException();
+        }
+    }
+
+    @PreDestroy
+    public void close() {
+        executor.shutdownNow();
+        try {
+            if (!executor.awaitTermination(
+                    CLOSE_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                log.warn(
+                        "Evaluation executor did not terminate within {} seconds",
+                        CLOSE_TIMEOUT_SECONDS);
+            }
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            log.warn("Interrupted while waiting for evaluation executor shutdown");
+        }
+        synchronized (this) {
+            for (Map<String, Object> job : jobs.values()) {
+                String status = String.valueOf(job.get("status"));
+                if ("queued".equals(status) || "running".equals(status)) {
+                    job.put("status", "failed");
+                    job.put("phase", "interrupted");
+                    job.put("error", "评测任务因服务停止而中断，请重新运行。");
+                    job.put("finished_at", now());
+                }
+            }
+            save();
+        }
     }
 
     private void execute(String jobId, EvalRunRequest request, TenantScopedActorKey actorKey) {
@@ -205,6 +267,68 @@ public class EvaluationJobService {
                 save();
             }
         }
+    }
+
+    private void executeGoldenRag(String jobId, String datasetVersion) {
+        Map<String, Object> job = jobs.get(jobId);
+        if (job == null) {
+            return;
+        }
+        synchronized (this) {
+            job.put("status", "running");
+            job.put("phase", "running");
+            job.put("progress", 10);
+            job.put("started_at", now());
+            save();
+        }
+        try {
+            GoldenEvaluationReport report =
+                    goldenEvaluationService.run(datasetVersion, jobId);
+            Map<String, Object> reportMap = objectMapper.convertValue(
+                    report, new TypeReference<>() { });
+            reportMap.remove("json_path");
+            reportMap.remove("markdown_path");
+            reportMap.put(
+                    "report_download_path",
+                    "/eval/jobs/" + jobId + "/report.md");
+            synchronized (this) {
+                job.put("progress", 100);
+                job.put("report", reportMap);
+                job.put("report_markdown_path", report.markdownPath());
+                job.put("finished_at", now());
+                if (report.gate().passed()) {
+                    job.put("status", "succeeded");
+                    job.put("phase", "completed");
+                } else {
+                    job.put("status", "failed");
+                    job.put("phase", "gate_failed");
+                    job.put(
+                            "error",
+                            "Golden RAG evaluation failed "
+                                    + "(GOLDEN_EVALUATION_GATE_FAILED).");
+                }
+                save();
+            }
+        } catch (GoldenDatasetException exception) {
+            failGoldenJob(job, exception.errorCode(), exception);
+        } catch (Exception exception) {
+            failGoldenJob(job, "GOLDEN_EVALUATION_FAILED", exception);
+        }
+    }
+
+    private synchronized void failGoldenJob(
+            Map<String, Object> job,
+            String errorCode,
+            Exception exception) {
+        log.warn(
+                "Golden RAG evaluation failed code={} exceptionClass={}",
+                errorCode,
+                exception.getClass().getSimpleName());
+        job.put("status", "failed");
+        job.put("phase", "failed");
+        job.put("error", "Golden RAG evaluation failed (" + errorCode + ").");
+        job.put("finished_at", now());
+        save();
     }
 
     private synchronized void save() {
@@ -290,6 +414,26 @@ public class EvaluationJobService {
 
     private String nullableString(Object value) {
         return value == null ? null : String.valueOf(value);
+    }
+
+    private Map<String, Object> newJob(
+            String jobId,
+            ActorScope actor,
+            String kind) {
+        Map<String, Object> job = new LinkedHashMap<>();
+        job.put("job_id", jobId);
+        job.put("tenant_id", actor.tenantId().value());
+        job.put("owner_user_id", actor.userId().value());
+        job.put("kind", kind);
+        job.put("status", "queued");
+        job.put("phase", "queued");
+        job.put("progress", 0);
+        job.put("created_at", now());
+        job.put("started_at", null);
+        job.put("finished_at", null);
+        job.put("error", null);
+        job.put("report", null);
+        return job;
     }
 
     private Path jobsPath() {

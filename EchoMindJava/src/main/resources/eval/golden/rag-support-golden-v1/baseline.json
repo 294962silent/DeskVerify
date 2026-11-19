@@ -1,0 +1,47 @@
+{
+  "dataset_version": "rag-support-golden-v1",
+  "dataset_sha256": "d394771cd02c81d230225979f7015c1ef6b4e2f850ddfefb9ef70e59926cd968",
+  "retrieval_metrics": {
+    "DEV": {
+      "recall_at1": 1.0,
+      "recall_at3": 1.0,
+      "recall_at5": 1.0,
+      "mrr_at5": 1.0,
+      "document_hit_rate": 1.0,
+      "version_hit_rate": 1.0,
+      "chunk_hit_rate": 1.0,
+      "citation_hit_rate": 1.0,
+      "acl_violations": 0,
+      "degraded_rate": 0.0,
+      "p50_latency_ms": 33,
+      "p95_latency_ms": 40
+    },
+    "HOLDOUT": {
+      "recall_at1": 1.0,
+      "recall_at3": 1.0,
+      "recall_at5": 1.0,
+      "mrr_at5": 1.0,
+      "document_hit_rate": 1.0,
+      "version_hit_rate": 1.0,
+      "chunk_hit_rate": 1.0,
+      "citation_hit_rate": 1.0,
+      "acl_violations": 0,
+      "degraded_rate": 0.0,
+      "p50_latency_ms": 33,
+      "p95_latency_ms": 42
+    }
+  },
+  "handoff_metrics": {
+    "ALL": {
+      "accuracy": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "false_escalation_rate": 0.0,
+      "missed_handoff_rate": 0.0,
+      "true_positive": 10,
+      "false_positive": 0,
+      "true_negative": 10,
+      "false_negative": 0
+    }
+  }
+}

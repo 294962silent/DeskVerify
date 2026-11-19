@@ -23,6 +23,7 @@ import com.echomind.memory.MessageRole;
 import com.echomind.monitor.PerformanceMonitor;
 import com.echomind.saas.api.error.ResourceNotFoundException;
 import com.echomind.saas.architecture.LegacySaaSBridge;
+import com.echomind.saas.evaluation.api.GoldenRagEvaluationRequest;
 import com.echomind.saas.identity.domain.ActorScope;
 import com.echomind.saas.identity.domain.TenantScopedActorKey;
 import com.echomind.saas.rag.application.KnowledgeRetrieval;
@@ -305,6 +306,36 @@ public class EchoMindController {
             @RequestParam(defaultValue = "10") int limit,
             @AuthenticationPrincipal ActorScope actorScope) {
         return Map.of("items", evaluationJobService.list(actorScope, limit));
+    }
+
+    @PostMapping(
+            value = "/eval/golden-rag/jobs",
+            consumes = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasRole('TENANT_ADMIN')")
+    @Operation(
+            summary = "提交 Golden RAG 与转人工评测",
+            description = "使用版本化合成数据集执行真实 BGE/MySQL 检索和确定性转人工策略评测。")
+    public ResponseEntity<com.echomind.saas.evaluation.domain.EvaluationJob>
+            submitGoldenRagJob(
+                    @Valid @RequestBody GoldenRagEvaluationRequest request,
+                    @AuthenticationPrincipal ActorScope actorScope) {
+        return ResponseEntity.status(HttpStatus.ACCEPTED)
+                .body(evaluationJobService.submitGoldenRag(
+                        request.datasetVersion(), actorScope));
+    }
+
+    @GetMapping(
+            value = "/eval/jobs/{jobId}/report.md",
+            produces = "text/markdown; charset=utf-8")
+    @PreAuthorize("hasRole('TENANT_ADMIN')")
+    @Operation(summary = "下载 Golden RAG Markdown 评测报告")
+    public ResponseEntity<String> goldenRagMarkdownReport(
+            @org.springframework.web.bind.annotation.PathVariable String jobId,
+            @AuthenticationPrincipal ActorScope actorScope) {
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(
+                        "text/markdown; charset=utf-8"))
+                .body(evaluationJobService.markdownReport(jobId, actorScope));
     }
 
     @PostMapping(value = "/eval/run", consumes = MediaType.APPLICATION_JSON_VALUE)

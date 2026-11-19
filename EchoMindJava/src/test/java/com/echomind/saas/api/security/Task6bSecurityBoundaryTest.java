@@ -24,6 +24,7 @@ import com.echomind.saas.identity.application.ActorScopeResolver;
 import com.echomind.saas.identity.domain.ActorRole;
 import com.echomind.saas.identity.domain.ActorScope;
 import com.echomind.saas.identity.security.SaasSecurityConfiguration;
+import com.echomind.saas.evaluation.golden.GoldenEvaluationService;
 import com.echomind.saas.rag.application.KnowledgeRetrieval;
 import com.echomind.skill.SkillManager;
 import com.echomind.tool.KnowledgeToolManager;
@@ -124,6 +125,9 @@ class Task6bSecurityBoundaryTest {
 
     @MockitoBean
     private EndToEndEvaluator evaluator;
+
+    @MockitoBean
+    private GoldenEvaluationService goldenEvaluationService;
 
     @MockitoBean
     private SkillManager skillManager;

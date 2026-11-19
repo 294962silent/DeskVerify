@@ -1,12 +1,15 @@
-# EchoMind Java 版本说明
+# DeskVerify Java 后端说明
 
-EchoMind Java 是 Python 版 EchoMind 的 Java/Spring 技术栈重构版，目录位于：
+DeskVerify 的 Java/Spring 后端目录位于：
 
 
 
 当前版本已经覆盖智能客服主链路：对话请求、Redis 工作记忆、MySQL 版本化
 Hybrid RAG、多 Agent 路由、Spring AI 模型调用、回答校验、Commerce/工单业务域、
 评测、监控、Swagger 文档和 Docker 部署。
+
+为兼容现有代码和数据库，`com.echomind` 包名、`EchoMindJava` 目录及部分内部
+服务名暂时保留；项目对外名称统一为 `DeskVerify`。
 
 ## 技术栈
 
@@ -175,6 +178,8 @@ Java 版已经实现：
 - Intent Accuracy
 - Macro-F1
 - per-class Precision / Recall / F1
+- Golden RAG Recall@1/3/5、MRR@5、citation hit rate、ACL violation、P95
+- 策略级转人工 Accuracy、Precision、Recall、误转人工和漏转人工
 - LLM-as-Judge 四维评分
 - baseline 保存和回归检测
 - `/monitor`
@@ -188,6 +193,32 @@ Java 版已经实现：
 - `src/main/java/com/echomind/evaluation/EndToEndEvaluator.java`
 - `src/main/java/com/echomind/evaluation/LLMJudge.java`
 - `src/main/java/com/echomind/monitor/PerformanceMonitor.java`
+
+### Golden RAG And Handoff
+
+```text
+POST /eval/golden-rag/jobs
+GET  /eval/jobs/{jobId}/report.md
+```
+
+`rag-support-golden-v1` 固定 12 篇文档、12 个 Chunk、30 条检索案例和 20 条
+转人工策略案例。检索案例按 20/10、转人工案例按 12/8 分为 DEV/HOLDOUT，执行真实
+BGE ONNX 和 MySQL 混合检索。数据集为合成方法验证基线，V1 不调用外部 LLM。
+
+Golden release gate 的默认阻塞条件：
+
+- ACL violation 为 `0`。
+- DEV/HOLDOUT 的 Recall@5、MRR@5、citation hit 相对 baseline 下降不超过
+  `0.02`。
+- 检索 degraded rate 为 `0`，避免 BGE 不可用时静默通过。
+- 转人工 Recall 不低于 `0.95`，false escalation 和 missed handoff 不高于
+  `0.10`。
+- ALL P95 超过 `2000 ms` 时产生 advisory warning；V1 不据此阻塞。
+
+门槛可通过 `GOLDEN_EVAL_*` 环境变量调整。阻塞检查失败时异步任务返回稳定错误码
+`GOLDEN_EVALUATION_GATE_FAILED`，同时保留报告。CI 通过
+`scripts/assert-golden-evaluation.ps1` 检查 `gate.passed=true`，并确认
+`GoldenEvaluationEndToEndTest` 实际执行且 skipped 为 `0`。
 
 ### Swagger / OpenAPI
 
