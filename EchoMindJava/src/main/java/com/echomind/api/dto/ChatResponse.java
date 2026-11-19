@@ -1,5 +1,6 @@
 package com.echomind.api.dto;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import io.swagger.v3.oas.annotations.media.Schema;
 
@@ -51,6 +52,10 @@ public record ChatResponse(
         @Schema(description = "版本化 RAG 引用链")
         List<ChatCitationResponse> citations,
         @Schema(description = "检索降级模式")
-        List<String> retrievalDegradedModes
+        List<String> retrievalDegradedModes,
+        @Schema(description = "已提交或重放的转人工工单 ID")
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        @JsonProperty("handoff_ticket_id")
+        String handoffTicketId
 ) {
 }

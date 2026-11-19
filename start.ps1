@@ -48,7 +48,7 @@ $envPath = Join-Path $root ".env"
 $values = Read-DotEnv -Path $envPath
 $newEnvironment = $values.Count -eq 0
 
-Set-DefaultValue $values "DESKVERIFY_VERSION" "0.1.0"
+Set-DefaultValue $values "DESKVERIFY_VERSION" "0.1.1"
 Set-DefaultValue $values "FRONTEND_PORT" "5173"
 Set-DefaultValue $values "BACKEND_PORT" "8080"
 Set-DefaultValue $values "MYSQL_DATABASE" "deskverify"

@@ -1,22 +1,36 @@
 package com.echomind.api;
 
+import java.net.URI;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ResponseBody;
-import org.springframework.web.servlet.view.RedirectView;
 
 @Controller
 public class SwaggerDocsController {
 
     @GetMapping("/swagger-ui.html")
-    public RedirectView swaggerUiRedirect() {
-        return new RedirectView("/swagger-ui/index.html");
+    public ResponseEntity<Void> swaggerUiRedirect() {
+        return ResponseEntity.status(HttpStatus.FOUND)
+                .location(URI.create("swagger-ui/index.html"))
+                .build();
     }
 
-    @GetMapping(value = {"/docs", "/swagger-ui/index.html"}, produces = MediaType.TEXT_HTML_VALUE)
+    @GetMapping(value = "/docs", produces = MediaType.TEXT_HTML_VALUE)
     @ResponseBody
     public String docs() {
+        return render("v3/api-docs");
+    }
+
+    @GetMapping(value = "/swagger-ui/index.html", produces = MediaType.TEXT_HTML_VALUE)
+    @ResponseBody
+    public String swaggerUi() {
+        return render("../v3/api-docs");
+    }
+
+    private String render(String specPath) {
         return """
                 <!doctype html>
                 <html lang="zh-CN">
@@ -36,7 +50,7 @@ public class SwaggerDocsController {
                   <script>
                     window.onload = function () {
                       window.ui = SwaggerUIBundle({
-                        url: "/v3/api-docs",
+                        url: new URL("%s", window.location.href).href,
                         dom_id: "#swagger-ui",
                         deepLinking: true,
                         displayOperationId: false,
@@ -50,6 +64,6 @@ public class SwaggerDocsController {
                   </script>
                 </body>
                 </html>
-                """;
+                """.formatted(specPath);
     }
 }

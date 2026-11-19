@@ -5,7 +5,7 @@
 从仓库根目录打开 PowerShell 7。安装 Docker Desktop 并使用 Linux 容器，确保
 `docker version` 和 `docker compose version` 正常。运行完整后端测试需要 JDK 21，
 前端开发需要 Node.js 22。只是运行 Windows 演示包不需要本机 JDK 或 Node.js；
-请使用 [Windows 发布指南](./RELEASE_WINDOWS_V0_1_0.md) 的根目录启动脚本。
+请使用 [Windows 发布指南](./RELEASE_WINDOWS_V0_1_1.md) 的根目录启动脚本。
 
 ## Testcontainers
 
@@ -160,7 +160,7 @@ Demo 数据包含三个租户，每个租户有两个 customer account，并配�
 | `globex` | `demo-globex-user` | `customer-001`, `customer-002` |
 | `initech` | `demo-initech-user` | `customer-001`, `customer-002` |
 
-根目录脚本生成 Acme 演示 JWT，可按 [Windows 发布指南](./RELEASE_WINDOWS_V0_1_0.md#access)
+根目录脚本生成 Acme 演示 JWT，可按 [Windows 发布指南](./RELEASE_WINDOWS_V0_1_1.md#access)
 验证客户接口。独立应用的 JWT 必须由应用配置的 HMAC 密钥签名，包含有效的
 `iss`、`aud`、`sub`、`tenant_id` 和 `exp`。每个租户要用相应已授权的会话；
 不能靠修改 JWT claim 绕过成员关系。对当前 actor 未授权的 customer ID 返回 `404`，

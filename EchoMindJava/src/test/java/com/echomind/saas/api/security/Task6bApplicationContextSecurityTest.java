@@ -236,10 +236,14 @@ class Task6bApplicationContextSecurityTest {
     void swaggerUiRedirectAndTargetRemainPublicInTheFullApplicationContext() throws Exception {
         mvc.perform(get("/swagger-ui.html"))
                 .andExpect(status().is3xxRedirection())
-                .andExpect(header().string("Location", "/swagger-ui/index.html"));
+                .andExpect(header().string("Location", "swagger-ui/index.html"));
 
         mvc.perform(get("/swagger-ui/index.html"))
                 .andExpect(status().isOk());
+
+        mvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.servers[0].url").value("../"));
     }
 
     private static String token(String subject, String tenantId) throws Exception {

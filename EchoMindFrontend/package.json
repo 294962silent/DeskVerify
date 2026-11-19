@@ -1,13 +1,13 @@
 {
   "name": "echomind-frontend",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0",
-    "test": "node --test src/lib/auth.test.js src/lib/goldenEvaluation.test.js src/components/TicketPanel.test.js src/components/RagPanel.test.js"
+    "test": "node --test src/lib/auth.test.js src/lib/backends.test.js src/lib/evaluationSession.test.js src/lib/goldenEvaluation.test.js src/components/TicketPanel.test.js src/components/RagPanel.test.js"
   },
   "dependencies": {
     "@vitejs/plugin-vue": "^6.0.2",

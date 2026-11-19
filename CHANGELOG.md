@@ -2,6 +2,21 @@
 
 All notable changes to DeskVerify are documented in this file.
 
+## v0.1.1 - 2026-11-19
+
+### Fixed
+
+- With no LLM provider key, authenticated chat reads order and fulfillment
+  records for the selected authorized customer and cites the actual tool call
+  in the request trace. It does not invent carrier or shipment tracking data.
+- Explicit requests for a human create a queued support ticket. The browser
+  reuses the Java conversation ID, and same-conversation retries reuse the
+  ticket within the normal idempotency window.
+- Swagger works at the direct Java endpoint and through `/api/java` and uses
+  the correct origin and prefix for Try It Out.
+- Saving, replacing, or removing the session token refreshes evaluation
+  status and prevents older responses from restoring stale job or report data.
+
 ## v0.1.0 - 2026-11-19
 
 ### Added

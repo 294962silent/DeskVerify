@@ -30,9 +30,12 @@ import com.echomind.saas.rag.application.KnowledgeRetrieval;
 import com.echomind.saas.rag.domain.KnowledgeCitation;
 import com.echomind.saas.rag.domain.KnowledgeRetrievalResult;
 import com.echomind.saas.rag.domain.RetrievalHit;
+import com.echomind.saas.support.application.ChatSupportActions;
 import com.echomind.skill.SkillManager;
 import com.echomind.tool.KnowledgeToolManager;
 import com.echomind.tool.ToolResult;
+import com.echomind.trace.RequestToolTrace;
+import com.echomind.trace.RequestTraceStore;
 import com.echomind.trace.ToolCallTrace;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
@@ -58,6 +61,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 @RestController
 @Tag(name = "EchoMind API", description = "智能客服对话、知识库、监控和评测接口")
@@ -77,6 +81,8 @@ public class EchoMindController {
     private final SkillManager skillManager;
     private final ObjectMapper objectMapper;
     private final PrometheusMeterRegistry prometheusMeterRegistry;
+    private final ChatSupportActions chatSupportActions;
+    private final RequestTraceStore traceStore;
 
     public EchoMindController(
             AgentOrchestrator orchestrator,
@@ -91,7 +97,9 @@ public class EchoMindController {
             EvaluationJobService evaluationJobService,
             SkillManager skillManager,
             ObjectMapper objectMapper,
-            PrometheusMeterRegistry prometheusMeterRegistry
+            PrometheusMeterRegistry prometheusMeterRegistry,
+            ChatSupportActions chatSupportActions,
+            RequestTraceStore traceStore
     ) {
         this.orchestrator = orchestrator;
         this.intentRecognizer = intentRecognizer;
@@ -106,6 +114,8 @@ public class EchoMindController {
         this.skillManager = skillManager;
         this.objectMapper = objectMapper;
         this.prometheusMeterRegistry = prometheusMeterRegistry;
+        this.chatSupportActions = chatSupportActions;
+        this.traceStore = traceStore;
     }
 
     @GetMapping("/health")
@@ -119,12 +129,18 @@ public class EchoMindController {
     public ChatResponse chat(
             @Valid @RequestBody ChatRequest request,
             @AuthenticationPrincipal ActorScope actorScope) {
+        long started = System.nanoTime();
         String actorKey = new TenantScopedActorKey(
                 actorScope.tenantId(), actorScope.userId()).value();
         String conversationId = request.conversationId() == null || request.conversationId().isBlank()
                 ? UUID.randomUUID().toString()
                 : request.conversationId();
         String requestId = UUID.randomUUID().toString().substring(0, 8);
+        var action = chatSupportActions.handle(
+                request.message(), request.customerId(), conversationId, actorScope);
+        if (action.isPresent()) {
+            return supportAnswer(action.get(), request, actorScope, actorKey, conversationId, requestId, started);
+        }
         MemoryContext memoryContext = memoryManager.getContext(actorKey, conversationId, request.message());
         String memoryText = memoryContext.toPromptText(objectMapper);
         List<Map<String, String>> history = memoryContext.recentMessages().stream()
@@ -159,8 +175,7 @@ public class EchoMindController {
         );
         AnswerVerifier.VerificationResult verification = answerVerifier.verify(request.message(), result.response(), fullContext);
         boolean escalated = result.escalated() || verification.needEscalation();
-        memoryManager.addMessage(actorKey, conversationId, MessageRole.USER, request.message());
-        memoryManager.addMessage(actorKey, conversationId, MessageRole.ASSISTANT, result.response());
+        rememberTurn(actorKey, conversationId, request.message(), result.response());
         memoryManager.updateProfile(actorKey, conversationId);
         return new ChatResponse(
                 conversationId,
@@ -185,8 +200,37 @@ public class EchoMindController {
                 knowledge.citations().stream()
                         .map(this::chatCitation)
                         .toList(),
-                knowledge.degradedModes()
+                knowledge.degradedModes(),
+                null
         );
+    }
+
+    private ChatResponse supportAnswer(
+            ChatSupportActions.Result action, ChatRequest request, ActorScope actor, String actorKey,
+            String conversationId, String requestId, long started) {
+        String intent = action.intent().name().toLowerCase(Locale.ROOT);
+        boolean handoff = action.intent() == IntentCategory.HUMAN_HANDOFF;
+        String agent = handoff ? "escalation" : "general";
+        String group = handoff ? "escalation" : "query";
+        boolean escalated = action.ticketId() != null;
+        boolean grounded = action.toolCall() != null;
+        List<ToolCallTrace> calls = grounded ? List.of(action.toolCall()) : List.of();
+        rememberTurn(actorKey, conversationId, request.message(), action.answer());
+        long latency = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
+        traceStore.record(new RequestToolTrace(
+                requestId, null, "chat", actorKey, conversationId, intent, group, agent, agent,
+                List.of(), calls.stream().map(ToolCallTrace::toolName).toList(), calls, false, escalated, latency),
+                actor);
+        return new ChatResponse(
+                conversationId, requestId, action.answer(), intent, group, agent, List.of(agent), agent,
+                List.of(), action.reason(), 1.0, escalated, latency, false, grounded, grounded,
+                action.orderId() == null ? Map.of() : Map.of("order_id", List.of(action.orderId())),
+                1.0, Map.of("deterministic", 1.0), List.of(), List.of(), action.ticketId());
+    }
+
+    private void rememberTurn(String actorKey, String conversationId, String message, String answer) {
+        memoryManager.addMessage(actorKey, conversationId, MessageRole.USER, message);
+        memoryManager.addMessage(actorKey, conversationId, MessageRole.ASSISTANT, answer);
     }
 
     @PostMapping("/search")
