@@ -205,3 +205,7 @@ Golden E2E 没有被 skip，然后上传 Surefire、Golden 报告和前端构建
 - [Java 后端 README](./EchoMindJava/README.md)
 - [Vue 前端 README](./EchoMindFrontend/README.md)
 
+## License
+
+This project is licensed under the [MIT License](./LICENSE).
+
