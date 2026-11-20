@@ -13,7 +13,7 @@ DeskVerify 的 Vue 3 + Vite 管理端。
 
 ## Release Runtime
 
-`v0.1.1` 推荐在仓库或发布包根目录用 PowerShell 7 启动：
+`v0.1.2` 推荐在仓库或发布包根目录用 PowerShell 7 启动：
 
 ```powershell
 .\start.ps1
@@ -27,7 +27,7 @@ http://localhost:5173
 
 前端 Nginx 将 `/api/java/` 反向代理到 Compose 内部的 Java 后端，
 可通过 `/api/java/docs` 打开 Swagger。启动、端口和停止说明见
-[Windows 发布指南](../docs/RELEASE_WINDOWS_V0_1_1.md)。
+[Windows 发布指南](../docs/RELEASE_WINDOWS_V0_1_2.md)。
 
 ## Local Development
 

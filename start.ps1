@@ -18,14 +18,6 @@ if ($PSVersionTable.PSVersion.Major -lt 7) {
 if (-not $IsWindows) {
     throw "This release bootstrap currently supports Windows with Docker Desktop."
 }
-if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-    throw "Docker Desktop is required. Install it and reopen PowerShell."
-}
-$null = & docker info 2>&1
-if ($LASTEXITCODE -ne 0) {
-    throw "Docker Desktop is not running or is unavailable."
-}
-
 function New-RandomHex([int]$ByteCount) {
     $bytes = New-Object byte[] $ByteCount
     [Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
@@ -48,7 +40,7 @@ $envPath = Join-Path $root ".env"
 $values = Read-DotEnv -Path $envPath
 $newEnvironment = $values.Count -eq 0
 
-Set-DefaultValue $values "DESKVERIFY_VERSION" "0.1.1"
+Set-DefaultValue $values "DESKVERIFY_VERSION" "0.1.2"
 Set-DefaultValue $values "FRONTEND_PORT" "5173"
 Set-DefaultValue $values "BACKEND_PORT" "8080"
 Set-DefaultValue $values "MYSQL_DATABASE" "deskverify"
@@ -63,7 +55,7 @@ Set-DefaultValue $values "LLM_FALLBACK_ENABLED" "true"
 Set-DefaultValue $values "ANTHROPIC_API_KEY" ""
 Set-DefaultValue $values "ANTHROPIC_MODEL" "claude-3-5-sonnet-20241022"
 Set-DefaultValue $values "DEEPSEEK_API_KEY" ""
-Set-DefaultValue $values "DEEPSEEK_MODEL" "deepseek-chat"
+Set-DefaultValue $values "DEEPSEEK_MODEL" "deepseek-flash"
 if (-not $values.Contains("SPRING_PROFILES_ACTIVE") -or
         [string]::IsNullOrWhiteSpace([string]$values["SPRING_PROFILES_ACTIVE"])) {
     $values["SPRING_PROFILES_ACTIVE"] = "anthropic,demo"
@@ -84,14 +76,29 @@ if ($Provider) {
     $values["SPRING_PROFILES_ACTIVE"] = "$Provider,demo"
 }
 
+$selectedProfile = [string]$values["SPRING_PROFILES_ACTIVE"]
+$selectedProfiles = $selectedProfile.Split(',', [StringSplitOptions]::TrimEntries)
+if ($DeepSeekApiKey -match '^\s*oc_sk_' -or
+        ($selectedProfiles -contains "deepseek" -and
+            [string]$values["DEEPSEEK_API_KEY"] -match '^\s*oc_sk_')) {
+    throw "DEEPSEEK_API_KEY is an OpenCode Go key. Configure a native DeepSeek API key in .env, or leave it empty for local fallback."
+}
+
+if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+    throw "Docker Desktop is required. Install it and reopen PowerShell."
+}
+$null = & docker info 2>&1
+if ($LASTEXITCODE -ne 0) {
+    throw "Docker Desktop is not running or is unavailable."
+}
+
 Write-DotEnv -Path $envPath -Values $values
 
-$selectedProfile = [string]$values["SPRING_PROFILES_ACTIVE"]
-if ($selectedProfile.StartsWith("deepseek") -and
+if ($selectedProfiles -contains "deepseek" -and
         [string]::IsNullOrWhiteSpace([string]$values["DEEPSEEK_API_KEY"])) {
     Write-Warning "DEEPSEEK_API_KEY is empty; DeskVerify will use its local fallback responses."
 }
-if ($selectedProfile.StartsWith("anthropic") -and
+if ($selectedProfiles -contains "anthropic" -and
         [string]::IsNullOrWhiteSpace([string]$values["ANTHROPIC_API_KEY"])) {
     Write-Warning "ANTHROPIC_API_KEY is empty; DeskVerify will use its local fallback responses."
 }

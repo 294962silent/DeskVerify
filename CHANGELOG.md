@@ -2,6 +2,23 @@
 
 All notable changes to DeskVerify are documented in this file.
 
+## v0.1.2 - 2026-11-20
+
+### Fixed
+
+- Native DeepSeek support chat defaults to `deepseek-flash`. Existing
+  explicit model and endpoint settings are preserved. Blank provider keys
+  boot in local fallback mode, and the Windows launcher rejects OpenCode Go
+  keys in the native DeepSeek slot without displaying them.
+- Swagger **Authorize** accepts a DeskVerify JWT on both direct and proxied
+  URLs. Swagger's JavaScript and CSS are packaged and served from the same
+  origin. It does not store the JWT across refreshes or change API permissions.
+
+### Added
+
+- Windows CI regression for the provider configuration guard, using only
+  synthetic values and no external provider calls.
+
 ## v0.1.1 - 2026-11-19
 
 ### Fixed

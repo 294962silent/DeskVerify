@@ -20,6 +20,7 @@ import com.echomind.saas.identity.domain.ActorScope;
 import com.echomind.saas.testsupport.MySqlTestContainers;
 import com.echomind.skill.SkillManager;
 import com.echomind.tool.KnowledgeToolManager;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.JWSHeader;
 import com.nimbusds.jose.crypto.MACSigner;
@@ -241,9 +242,40 @@ class Task6bApplicationContextSecurityTest {
         mvc.perform(get("/swagger-ui/index.html"))
                 .andExpect(status().isOk());
 
+        mvc.perform(get("/swagger-ui/assets/swagger-ui-bundle.js"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType("application/javascript"));
+
         mvc.perform(get("/v3/api-docs"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.servers[0].url").value("../"));
+    }
+
+    @Test
+    void generatedOpenApiRequiresBearerJwtForProtectedOperations() throws Exception {
+        mvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.components.securitySchemes.bearerAuth.type").value("http"))
+                .andExpect(jsonPath("$.components.securitySchemes.bearerAuth.scheme").value("bearer"))
+                .andExpect(jsonPath("$.components.securitySchemes.bearerAuth.bearerFormat").value("JWT"))
+                .andExpect(jsonPath("$.security[0].bearerAuth").isArray())
+                .andExpect(jsonPath("$.security[0].bearerAuth").isEmpty())
+                .andExpect(jsonPath("$.paths['/api/v1/commerce/customers/{customerId}'].get").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/commerce/customers/{customerId}'].get.security").doesNotExist())
+                .andExpect(jsonPath("$.paths['/health'].get").exists())
+                .andExpect(jsonPath("$.paths['/health'].get.security").doesNotExist())
+                .andExpect(result -> {
+                    var paths = new ObjectMapper().readTree(result.getResponse().getContentAsByteArray())
+                            .path("paths");
+                    for (String path : List.of("/actuator/health", "/actuator/info", "/docs",
+                            "/swagger-ui.html", "/swagger-ui/index.html", "/v3/api-docs")) {
+                        if (paths.has(path)) {
+                            var operationSecurity = paths.path(path).path("get").path("security");
+                            assertThat(operationSecurity.isArray()).as("public path %s", path).isTrue();
+                            assertThat(operationSecurity.size()).isZero();
+                        }
+                    }
+                });
     }
 
     private static String token(String subject, String tenantId) throws Exception {
