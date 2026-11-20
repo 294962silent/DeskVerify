@@ -2,6 +2,7 @@ package com.echomind.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.echomind.config.OpenApiConfig;
@@ -30,6 +31,31 @@ class SwaggerDocsControllerTest {
                 .isEqualTo("/v3/api-docs");
         assertThat(URI.create("http://localhost:5173/api/java" + path).resolve(url.group(1)).getPath())
                 .isEqualTo("/api/java/v3/api-docs");
+
+        assertThat(html).doesNotContain("cdn.jsdelivr.net")
+                .contains("persistAuthorization: false", "validatorUrl: null");
+        assertAssetResolvesOnBothOrigins(html, path, "href", "swagger-ui.css");
+        assertAssetResolvesOnBothOrigins(html, path, "src", "swagger-ui-bundle.js");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"swagger-ui.css", "swagger-ui-bundle.js"})
+    void localAssetIsServedFromThePackagedDistribution(String file) throws Exception {
+        var result = mvc.perform(get("/swagger-ui/assets/" + file))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(file.endsWith(".js") ? "application/javascript" : "text/css"))
+                .andReturn();
+        assertThat(result.getResponse().getContentAsByteArray().length).isGreaterThan(10_000);
+    }
+
+    private static void assertAssetResolvesOnBothOrigins(String html, String path, String attribute, String file) {
+        var url = Pattern.compile(attribute + "=\"([^\"]*" + Pattern.quote(file) + ")\"").matcher(html);
+        assertThat(url.find()).isTrue();
+        String asset = url.group(1);
+        assertThat(URI.create("http://localhost:18080" + path).resolve(asset).toString())
+                .isEqualTo("http://localhost:18080/swagger-ui/assets/" + file);
+        assertThat(URI.create("http://localhost:15173/api/java" + path).resolve(asset).toString())
+                .isEqualTo("http://localhost:15173/api/java/swagger-ui/assets/" + file);
     }
 
     @Test

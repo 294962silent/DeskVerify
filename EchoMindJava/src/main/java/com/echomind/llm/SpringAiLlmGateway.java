@@ -12,16 +12,17 @@ import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Import;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
 
 @Component
+@Import(LlmCredentialFallbackConfiguration.class)
 public class SpringAiLlmGateway implements LlmGateway {
 
     private static final Logger log = LoggerFactory.getLogger(SpringAiLlmGateway.class);
-    private static final String STARTUP_PLACEHOLDER_KEY = "echomind-local-placeholder";
 
     private final ChatModel chatModel;
     private final EchoMindProperties properties;
@@ -66,7 +67,7 @@ public class SpringAiLlmGateway implements LlmGateway {
             if (!properties.getLlm().isFallbackEnabled()) {
                 throw ex;
             }
-            log.warn("Spring AI chat failed, using deterministic fallback: {}", ex.getMessage());
+            log.warn("Spring AI chat failed, using deterministic fallback: {}", ex.getClass().getSimpleName());
             return fallback(userPrompt);
         }
     }
@@ -99,6 +100,6 @@ public class SpringAiLlmGateway implements LlmGateway {
 
     private static boolean hasRealKey(String value) {
         String key = clean(value).trim();
-        return !key.isBlank() && !STARTUP_PLACEHOLDER_KEY.equals(key);
+        return !key.isBlank() && !LlmCredentialFallbackConfiguration.STARTUP_PLACEHOLDER_KEY.equals(key);
     }
 }

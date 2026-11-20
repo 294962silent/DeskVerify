@@ -58,7 +58,7 @@ DeskVerify 企业 SaaS 智能支持平台/
 └── README.md
 ```
 
-## Windows v0.1.1 一键启动
+## Windows v0.1.2 一键启动
 
 要求：
 
@@ -100,18 +100,29 @@ Swagger：http://localhost:5173/api/java/docs 或 http://localhost:8080/docs
 
 默认保留数据库和运行时数据。只有明确执行 `.\stop.ps1 -Volumes` 才会删除持久化卷。
 
-使用真实模型：
+使用真实客服模型时，在安装目录已忽略的本地 `.env` 中配置原生提供商密钥。
+不要把密钥放进命令行、浏览器或 Git。DeepSeek 用以下配置：
 
-```powershell
-.\start.ps1 -Provider deepseek -DeepSeekApiKey "your_key"
+```dotenv
+SPRING_PROFILES_ACTIVE=deepseek,demo
+DEEPSEEK_MODEL=deepseek-flash
 ```
+
+在同一个 `.env` 内填写 `DEEPSEEK_API_KEY`，再运行 `.\start.ps1`。
+使用 Anthropic 时，改用 `SPRING_PROFILES_ACTIVE=anthropic,demo` 和 `ANTHROPIC_API_KEY`。
+OpenCode Go 密钥不是原生 DeepSeek 密钥，不能用于客服对话。
 
 不提供 LLM API Key 时，登录后的订单与履约查询仍读取有权限的真实记录，
 明确说“转人工”可以提交工单。其他问题仍可能使用本地降级回复。
 模型密钥和本地 JWT 不应分享或提交。
 
-详细说明见 [Windows v0.1.1 Release](./docs/RELEASE_WINDOWS_V0_1_1.md) 和
+在 Swagger 中点击 **Authorize** 并填写 DeskVerify JWT（不带 `Bearer` 前缀），
+即可在现有权限内调试接口。Swagger 的脚本和样式随应用本地提供。
+
+详细说明见 [Windows v0.1.2 Release](./docs/RELEASE_WINDOWS_V0_1_2.md) 和
 [本地开发与验证](./docs/LOCAL_DEVELOPMENT.md)。
+如遇 `RemoteSigned` 阻止脚本，请按[下载阻止说明](./docs/RELEASE_WINDOWS_V0_1_2.md#windows-download-blocking)处理，
+不要更改全局执行策略。
 
 ## 核心接口
 

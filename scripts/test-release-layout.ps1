@@ -13,8 +13,10 @@ $requiredFiles = @(
     "stop.ps1",
     "scripts/env-utils.ps1",
     "scripts/generate-demo-jwt.ps1",
+    "scripts/test-support-chat-provider.ps1",
     "CHANGELOG.md",
     "docs/RELEASE_WINDOWS_V0_1_0.md",
+    "docs/RELEASE_WINDOWS_V0_1_2.md",
     "README.md",
     "LICENSE"
 )
