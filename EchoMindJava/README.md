@@ -18,7 +18,7 @@ DeskVerify 的 Java/Spring 后端负责客服对话、租户与角色授权、�
 
 默认的 MySQL 和 Redis 端口只在 Compose 网络内使用。根目录的 `.\stop.ps1` 停止
 服务但保留三个持久卷。配置、JWT 生成和数据清理详见
-[Windows 发布指南](../docs/RELEASE_WINDOWS_V0_1_2.md)。
+[Windows 发布指南](../docs/RELEASE_WINDOWS_V0_1_3.md)。
 
 ## 技术栈与数据
 

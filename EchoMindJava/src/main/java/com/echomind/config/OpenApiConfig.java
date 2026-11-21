@@ -28,7 +28,7 @@ public class OpenApiConfig {
         return new OpenAPI()
                 .info(new Info()
                         .title("EchoMind Java API")
-                        .version("0.1.2")
+                        .version("0.1.3")
                         .description("EchoMind Java 智能客服系统接口文档，支持在线调试 /chat、/search、知识库、监控和评测接口。")
                         .license(new License().name("Internal Project")))
                 .components(new Components().addSecuritySchemes(BEARER_AUTH, new SecurityScheme()

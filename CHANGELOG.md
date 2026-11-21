@@ -2,6 +2,22 @@
 
 All notable changes to DeskVerify are documented in this file.
 
+## v0.1.3 - 2026-11-21
+
+### Fixed
+
+- Bind the Windows demo's published frontend and backend ports to `127.0.0.1`,
+  while keeping both host ports configurable.
+- Stop startup before modifying `.env`, downloading models, or starting
+  services if existing DeskVerify data volumes cannot be inspected, or if they
+  exist and the original `.env` is missing critical settings. Preserve the
+  existing volume names and stop behavior.
+
+### Added
+
+- Windows regression coverage for fresh setup, safe upgrade refusal, preserved
+  settings, and Docker volume discovery failures.
+
 ## v0.1.2 - 2026-11-20
 
 ### Fixed
