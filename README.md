@@ -58,7 +58,7 @@ DeskVerify 企业 SaaS 智能支持平台/
 └── README.md
 ```
 
-## Windows v0.1.2 一键启动
+## Windows v0.1.3 一键启动
 
 要求：
 
@@ -75,18 +75,18 @@ DeskVerify 企业 SaaS 智能支持平台/
 
 脚本会自动：
 
-1. 在根目录 `.env` 缺少配置时生成本地 MySQL、Redis 和 JWT 密钥；
+1. 检查 Docker 中是否已有 DeskVerify 数据卷；仅在没有旧卷时补齐本地 MySQL、Redis 和 JWT 配置；
 2. 下载并校验约 95 MB 的 BGE ONNX 模型；
 3. 生成有效期一天的 Acme 演示 JWT；
 4. 启动 MySQL、Redis、Java 后端和 Vue 前端；
 5. 等待后端 Actuator 和前端 HTTP 就绪后打开浏览器。
 
-访问地址：
+前后端端口只绑定本机 IPv4 地址 `127.0.0.1`，仍可在 `.env` 中设置 `FRONTEND_PORT`、`BACKEND_PORT`。默认地址：
 
 ```text
-前端：http://localhost:5173
-Swagger：http://localhost:5173/api/java/docs 或 http://localhost:8080/docs
-健康检查：http://localhost:8080/actuator/health
+前端：http://127.0.0.1:5173
+Swagger：http://127.0.0.1:5173/api/java/docs 或 http://127.0.0.1:8080/docs
+健康检查：http://127.0.0.1:8080/actuator/health
 ```
 
 演示 JWT 位于 `.deskverify/demo-token.txt`，需要粘贴到页面中的“Java 访问令牌”输入框。
@@ -99,6 +99,8 @@ Swagger：http://localhost:5173/api/java/docs 或 http://localhost:8080/docs
 ```
 
 默认保留数据库和运行时数据。只有明确执行 `.\stop.ps1 -Volumes` 才会删除持久化卷。
+升级或换目录解压时，应先在旧目录停止服务，再把原 `.env` 私下复制到新目录。
+旧卷存在但 `.env` 缺失或关键设置不完整时，新启动脚本会停止并提示恢复原配置。
 
 使用真实客服模型时，在安装目录已忽略的本地 `.env` 中配置原生提供商密钥。
 不要把密钥放进命令行、浏览器或 Git。DeepSeek 用以下配置：
@@ -119,9 +121,9 @@ OpenCode Go 密钥不是原生 DeepSeek 密钥，不能用于客服对话。
 在 Swagger 中点击 **Authorize** 并填写 DeskVerify JWT（不带 `Bearer` 前缀），
 即可在现有权限内调试接口。Swagger 的脚本和样式随应用本地提供。
 
-详细说明见 [Windows v0.1.2 Release](./docs/RELEASE_WINDOWS_V0_1_2.md) 和
+详细说明见 [Windows v0.1.3 Release](./docs/RELEASE_WINDOWS_V0_1_3.md) 和
 [本地开发与验证](./docs/LOCAL_DEVELOPMENT.md)。
-如遇 `RemoteSigned` 阻止脚本，请按[下载阻止说明](./docs/RELEASE_WINDOWS_V0_1_2.md#windows-download-blocking)处理，
+如遇 `RemoteSigned` 阻止脚本，请按[下载阻止说明](./docs/RELEASE_WINDOWS_V0_1_3.md#windows-download-blocking)处理，
 不要更改全局执行策略。
 
 ## 核心接口

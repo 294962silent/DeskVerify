@@ -114,6 +114,10 @@ jobs:
         shell: pwsh
         run: ./scripts/test-support-chat-provider.ps1
 
+      - name: Test Windows data-volume bootstrap guard
+        shell: pwsh
+        run: ./scripts/test-windows-bootstrap.ps1
+
   frontend:
     name: Frontend
     runs-on: ubuntu-latest

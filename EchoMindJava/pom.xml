@@ -6,7 +6,7 @@
 
     <groupId>com.echomind</groupId>
     <artifactId>echomind-java</artifactId>
-    <version>0.1.2</version>
+    <version>0.1.3</version>
     <name>EchoMind Java</name>
     <description>Spring Boot, Spring AI and LangChain4j implementation of EchoMind.</description>
 

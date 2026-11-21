@@ -7,7 +7,7 @@ RUN mvn -DskipTests package
 FROM eclipse-temurin:21-jre
 WORKDIR /app
 ENV JAVA_OPTS=""
-COPY --from=build /workspace/target/echomind-java-0.1.2.jar /app/echomind-java.jar
+COPY --from=build /workspace/target/echomind-java-0.1.3.jar /app/echomind-java.jar
 COPY models/bge-small-zh-v1.5 /app/models/bge-small-zh-v1.5
 COPY skills /app/skills
 ENV RAG_EMBEDDING_MODEL="bge-small-zh-v1.5-onnx-fp32"
