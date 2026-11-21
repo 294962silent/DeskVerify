@@ -139,6 +139,8 @@ public final class OnnxBgeEmbeddingProvider
             if (initialized) {
                 return;
             }
+            Thread thread = Thread.currentThread();
+            ClassLoader previousLoader = thread.getContextClassLoader();
             try {
                 if (!Files.isRegularFile(modelPath)) {
                     throw new IllegalStateException(
@@ -158,6 +160,8 @@ public final class OnnxBgeEmbeddingProvider
                     session = environment.createSession(
                             modelPath.toString(), options);
                 }
+                // DJL searches for native metadata using the TCCL, including on first use from a common-pool thread.
+                thread.setContextClassLoader(HuggingFaceTokenizer.class.getClassLoader());
                 tokenizer = HuggingFaceTokenizer.builder()
                         .optTokenizerPath(tokenizerPath)
                         .optAddSpecialTokens(true)
@@ -181,6 +185,7 @@ public final class OnnxBgeEmbeddingProvider
                         "BGE ONNX embedding unavailable: {}",
                         initializationError);
             } finally {
+                thread.setContextClassLoader(previousLoader);
                 initialized = true;
             }
         }

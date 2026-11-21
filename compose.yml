@@ -45,7 +45,8 @@ services:
       - deskverify
 
   backend:
-    build:
+    image: deskverify/backend:0.1.4
+    build: &backend-build
       context: ./EchoMindJava
       dockerfile: Dockerfile
     container_name: deskverify-backend
@@ -73,6 +74,31 @@ services:
       redis:
         condition: service_healthy
     stop_grace_period: 30s
+    networks:
+      - deskverify
+
+  worker:
+    image: deskverify/backend:0.1.4
+    build: *backend-build
+    restart: unless-stopped
+    entrypoint: ["java", "-jar", "/app/echomind-java.jar", "--outbox-worker"]
+    environment:
+      ECHOMIND_DB_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-deskverify}?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true
+      ECHOMIND_DB_USERNAME: ${ECHOMIND_DB_USERNAME:-deskverify}
+      ECHOMIND_DB_PASSWORD: ${ECHOMIND_DB_PASSWORD:-deskverify-local-password}
+      ECHOMIND_OUTBOX_LEASE_DURATION: ${ECHOMIND_OUTBOX_LEASE_DURATION:-PT15S}
+      ECHOMIND_OUTBOX_POLL_DELAY_MS: ${ECHOMIND_OUTBOX_POLL_DELAY_MS:-1000}
+    depends_on:
+      backend:
+        condition: service_started
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "test -n \"$$(find /tmp/deskverify-outbox.ready -mmin -1 -print 2>/dev/null)\""]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
     networks:
       - deskverify
 

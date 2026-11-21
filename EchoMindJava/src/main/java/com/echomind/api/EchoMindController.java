@@ -62,11 +62,20 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 
 @RestController
 @Tag(name = "EchoMind API", description = "智能客服对话、知识库、监控和评测接口")
 @LegacySaaSBridge("legacy HTTP controller binds authenticated SaaS actor scope into existing services")
 public class EchoMindController {
+
+    private static final Pattern EXPLICIT_KNOWLEDGE = Pattern.compile(
+            "^(?:请\\s*)?(?:根据|依据|查阅|查询|查一下|查)\\s*(?:版本化)?知识库"
+                    + "|^(?:(?:please\\s+)?(?:consult|search|check)\\s+"
+                    + "|(?:according to|based on)\\s+)(?:the\\s+)?knowledge base\\b");
+    private static final Pattern RENEWAL_TIMING_FAQ = Pattern.compile(
+            "(?s)^(?=.*(?:续费|续订))(?=.*(?:席位|权益))"
+                    + "(?=.*(?:多久|何时|什么时候|多长时间))(?=.*(?:生效|更新|到账))");
 
     private final AgentOrchestrator orchestrator;
     private final IntentRecognizer intentRecognizer;
@@ -141,6 +150,9 @@ public class EchoMindController {
         if (action.isPresent()) {
             return supportAnswer(action.get(), request, actorScope, actorKey, conversationId, requestId, started);
         }
+        if (asksForKnowledgeEvidence(request.message())) {
+            return knowledgeAnswer(request, actorScope, actorKey, conversationId, requestId, started);
+        }
         MemoryContext memoryContext = memoryManager.getContext(actorKey, conversationId, request.message());
         String memoryText = memoryContext.toPromptText(objectMapper);
         List<Map<String, String>> history = memoryContext.recentMessages().stream()
@@ -149,23 +161,11 @@ public class EchoMindController {
                 .toList();
         IntentResult intentResult = intentRecognizer.recognize(request.message(), history);
         boolean useKnowledge = shouldUseKnowledge(intentResult.intent());
-        ToolCallTrace knowledgeTrace = null;
         KnowledgeRetrievalResult knowledge = useKnowledge
                 ? retrieveKnowledge(request.message(), actorScope)
                 : new KnowledgeRetrievalResult(
                         request.message(), List.of(), List.of(), List.of(), 0);
-        if (useKnowledge) {
-            boolean failed = knowledge.degradedModes().contains("retrieval_failed");
-            knowledgeTrace = new ToolCallTrace(
-                    "versioned_knowledge_search",
-                    !failed,
-                    !knowledge.degradedModes().isEmpty(),
-                    false,
-                    true,
-                    knowledge.latencyMs(),
-                    String.join(",", knowledge.degradedModes())
-            );
-        }
+        ToolCallTrace knowledgeTrace = useKnowledge ? knowledgeTrace(knowledge) : null;
         String knowledgeText = buildKnowledgeContext(knowledge);
         String fullContext = join(memoryText, knowledgeText);
         OrchestratorResult result = orchestrator.run(
@@ -226,6 +226,67 @@ public class EchoMindController {
                 List.of(), action.reason(), 1.0, escalated, latency, false, grounded, grounded,
                 action.orderId() == null ? Map.of() : Map.of("order_id", List.of(action.orderId())),
                 1.0, Map.of("deterministic", 1.0), List.of(), List.of(), action.ticketId());
+    }
+
+    private static boolean asksForKnowledgeEvidence(String message) {
+        String question = message.strip().toLowerCase(Locale.ROOT);
+        return EXPLICIT_KNOWLEDGE.matcher(question).find()
+                || RENEWAL_TIMING_FAQ.matcher(question).find();
+    }
+
+    private ChatResponse knowledgeAnswer(
+            ChatRequest request, ActorScope actor, String actorKey,
+            String conversationId, String requestId, long started) {
+        KnowledgeRetrievalResult knowledge = retrieveKnowledge(request.message(), actor);
+        KnowledgeCitation citation = knowledge.citations().isEmpty() ? null : knowledge.citations().getFirst();
+        RetrievalHit hit = citation == null ? null : knowledge.hits().stream()
+                .filter(candidate -> candidate.chunk().chunkId().equals(citation.chunkId()))
+                .findFirst().orElse(null);
+        boolean grounded = hit != null;
+        String answer;
+        if (grounded) {
+            answer = "知识库原文 [" + citation.citationId() + "]（"
+                    + citation.documentTitle() + " v" + citation.versionNumber() + "）：\n"
+                    + hit.chunk().content();
+        } else if (knowledge.degradedModes().contains("retrieval_failed")) {
+            answer = "知识库检索暂时不可用，无法提供可引用的来源。";
+        } else {
+            answer = "没有找到可引用的知识库内容，暂时无法确认答案。";
+        }
+        if (grounded && !knowledge.degradedModes().isEmpty()) {
+            answer += "\n部分检索能力暂时不可用，以上为找到的原文。";
+        }
+        List<KnowledgeCitation> cited = grounded ? List.of(citation) : List.of();
+        ToolCallTrace call = knowledgeTrace(knowledge, cited);
+        long latency = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
+        String reason = "explicit knowledge evidence request";
+        rememberTurn(actorKey, conversationId, request.message(), answer);
+        traceStore.record(new RequestToolTrace(
+                requestId, null, "chat", actorKey, conversationId, "query", "query", "general", "general",
+                List.of(), List.of(call.toolName()), List.of(call), grounded, false, latency), actor);
+        return new ChatResponse(
+                conversationId, requestId, answer, "query", "query", "general", List.of("general"),
+                "general", List.of(), reason, 1.0, false, latency, grounded, grounded, grounded,
+                Map.of(), 1.0, Map.of("deterministic", 1.0),
+                cited.stream().map(this::chatCitation).toList(), knowledge.degradedModes(), null);
+    }
+
+    private static ToolCallTrace knowledgeTrace(KnowledgeRetrievalResult knowledge) {
+        return knowledgeTrace(knowledge, knowledge.citations());
+    }
+
+    private static ToolCallTrace knowledgeTrace(
+            KnowledgeRetrievalResult knowledge, List<KnowledgeCitation> citations) {
+        boolean failed = knowledge.degradedModes().contains("retrieval_failed");
+        int vectorEvidenceHits = (int) knowledge.hits().stream()
+                .filter(hit -> hit.vectorRank() > 0 && hit.vectorRank() != Integer.MAX_VALUE
+                        && hit.vectorScore() > 0.0 && citations.stream()
+                                .anyMatch(citation -> citation.chunkId().equals(hit.chunk().chunkId())))
+                .count();
+        return new ToolCallTrace(
+                "versioned_knowledge_search", !failed, !knowledge.degradedModes().isEmpty(),
+                false, !failed, knowledge.latencyMs(), String.join(",", knowledge.degradedModes()),
+                vectorEvidenceHits);
     }
 
     private void rememberTurn(String actorKey, String conversationId, String message, String answer) {

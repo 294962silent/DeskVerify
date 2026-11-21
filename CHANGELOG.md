@@ -2,6 +2,22 @@
 
 All notable changes to DeskVerify are documented in this file.
 
+## v0.1.4
+
+### Fixed
+
+- Customer chat can retrieve an authorized, active knowledge version and
+  quote its source without a model provider key.
+- Chat can initialize BGE ONNX from the packaged Java image even when its
+  first embedding runs on a background thread. The knowledge tool trace
+  distinguishes actual vector evidence from lexical fallback.
+
+### Added
+
+- An independent Windows Compose worker processes ticket Outbox events.
+  Expired leases can be reclaimed, and repeated delivery is deduplicated
+  by a durable MySQL Inbox receipt. There is no external notification.
+
 ## v0.1.3 - 2026-11-21
 
 ### Fixed

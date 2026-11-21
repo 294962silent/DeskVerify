@@ -76,6 +76,9 @@ import static org.mockito.Mockito.when;
 
 class EchoMindControllerChatRagTest {
 
+    private static final String EXPLICIT_KNOWLEDGE_QUESTION =
+            "根据知识库，北辰企业版续费后，席位多久生效？请引用来源。";
+
     private final AgentOrchestrator orchestrator = mock(AgentOrchestrator.class);
     private final IntentRecognizer intentRecognizer = mock(IntentRecognizer.class);
     private final MemoryManager memoryManager = mock(MemoryManager.class);
@@ -232,16 +235,86 @@ class EchoMindControllerChatRagTest {
     }
 
     @Test
+    void explicitKnowledgeRequestUsesAuthorizedVersionedEvidenceEvenWhenModelIntentIsOther() {
+        stubUnrecognizedChat();
+        KnowledgeRetrievalResult retrieval = retrievalResult("北辰企业版续费后，席位在47分钟内生效。");
+        RetrievalHit cited = retrieval.hits().getFirst();
+        var unrelated = new KnowledgeChunk(
+                "chunk-not-cited", "doc-other", 1, 0, "备用文档", "不是主要证据。", null,
+                "其他", "其他", 0, 7, "b".repeat(64), KnowledgeVisibility.TENANT, null,
+                new double[]{1.0, 0.0});
+        retrieval = new KnowledgeRetrievalResult(retrieval.query(), List.of(cited,
+                new RetrievalHit(unrelated, 0.1, 0.6, 2, 2, 0.015, 0.55)),
+                retrieval.citations(), retrieval.degradedModes(), retrieval.latencyMs());
+        when(knowledgeRetrieval.search(EXPLICIT_KNOWLEDGE_QUESTION, 4, actor())).thenReturn(retrieval);
+
+        ChatResponse response = controller.chat(
+                new ChatRequest(EXPLICIT_KNOWLEDGE_QUESTION, "chat-knowledge"), actor());
+
+        assertThat(response.conversationId()).isEqualTo("chat-knowledge");
+        assertThat(response.intent()).isEqualTo("query");
+        assertThat(response.knowledgeUsed()).isTrue();
+        assertThat(response.grounded()).isTrue();
+        assertThat(response.response()).contains("47分钟", "[citation-1]");
+        assertThat(response.citations()).singleElement().satisfies(citation -> {
+            assertThat(citation.versionNumber()).isEqualTo(2);
+            assertThat(citation.excerpt()).contains("47分钟");
+        });
+        verify(knowledgeRetrieval).search(EXPLICIT_KNOWLEDGE_QUESTION, 4, actor());
+        assertThat(traceStore.find(response.requestId(), actor())).hasValueSatisfying(trace ->
+                assertThat(trace.toolCalls()).singleElement().satisfies(call -> {
+                    assertThat(call.toolName()).isEqualTo("versioned_knowledge_search");
+                    assertThat(call.vectorEvidenceHits()).isEqualTo(1);
+                }));
+        verifyNoInteractions(intentRecognizer, orchestrator, answerVerifier, commerce, tickets);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"北辰企业版续费后，席位多久生效？", "续订后多久更新企业版权益？"})
+    void naturalSeatRenewalTimingQuestionUsesEvidenceWithoutARequestToCite(String question) {
+        stubUnrecognizedChat();
+        when(knowledgeRetrieval.search(question, 4, actor()))
+                .thenReturn(retrievalResult("北辰企业版续费后，席位在47分钟内生效。"));
+
+        ChatResponse response = controller.chat(new ChatRequest(question, "chat-renewal"), actor());
+
+        assertThat(response.intent()).isEqualTo("query");
+        assertThat(response.response()).contains("47分钟", "[citation-1]");
+        assertThat(response.grounded()).isTrue();
+        assertThat(response.citations()).singleElement()
+                .satisfies(citation -> assertThat(citation.versionNumber()).isEqualTo(2));
+        verify(knowledgeRetrieval).search(question, 4, actor());
+        verifyNoInteractions(commerce, tickets);
+    }
+
+    @Test
+    void explicitKnowledgeRequestWithoutAuthorizedEvidenceDoesNotInventAnAnswer() {
+        stubUnrecognizedChat();
+        when(knowledgeRetrieval.search(EXPLICIT_KNOWLEDGE_QUESTION, 4, actor()))
+                .thenReturn(new KnowledgeRetrievalResult(
+                        EXPLICIT_KNOWLEDGE_QUESTION, List.of(), List.of(), List.of(), 3));
+
+        ChatResponse response = controller.chat(
+                new ChatRequest(EXPLICIT_KNOWLEDGE_QUESTION, "chat-no-source"), actor());
+
+        assertThat(response.knowledgeUsed()).isFalse();
+        assertThat(response.grounded()).isFalse();
+        assertThat(response.citations()).isEmpty();
+        assertThat(response.response()).contains("没有找到").doesNotContain("47分钟");
+        verifyNoInteractions(commerce, tickets);
+    }
+
+    @Test
     void chatUsesVersionedEvidenceAndReturnsStructuredCitationsWithDegradedModes()
             throws Exception {
         stubChatBase();
         KnowledgeRetrievalResult retrieval = retrievalResult();
         when(knowledgeRetrieval.search(
-                "企业版续费后席位多久生效", 4, actor()))
+                "企业版续费支持哪些权益", 4, actor()))
                 .thenReturn(retrieval);
 
         ChatResponse response = controller.chat(
-                new ChatRequest("企业版续费后席位多久生效", null),
+                new ChatRequest("企业版续费支持哪些权益", null),
                 actor());
 
         assertThat(response.knowledgeUsed()).isTrue();
@@ -335,13 +408,17 @@ class EchoMindControllerChatRagTest {
     }
 
     private static KnowledgeRetrievalResult retrievalResult() {
+        return retrievalResult("续费后五分钟内更新席位和权益。");
+    }
+
+    private static KnowledgeRetrievalResult retrievalResult(String content) {
         KnowledgeChunk chunk = new KnowledgeChunk(
                 "chunk-1",
                 "doc-1",
                 2,
                 0,
                 "企业版续费与席位",
-                "续费后五分钟内更新席位和权益。",
+                content,
                 null,
                 "续费规则",
                 "套餐与权益 > 续费规则",

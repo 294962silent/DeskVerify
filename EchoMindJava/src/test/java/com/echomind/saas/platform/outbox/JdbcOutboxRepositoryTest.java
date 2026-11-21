@@ -5,6 +5,10 @@ import com.echomind.saas.testsupport.MySqlTestContainers;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.File;
+import java.net.ServerSocket;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -15,6 +19,7 @@ import java.util.concurrent.TimeUnit;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
@@ -51,8 +56,116 @@ class JdbcOutboxRepositoryTest {
         jdbc = new JdbcTemplate(dataSource);
         transactions = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
         jdbc.update("delete from outbox_event");
+        jdbc.update("delete from inbox_event");
         jdbc.update("delete from tenant where id like 'tx-%'");
         repository = new JdbcOutboxRepository(jdbc);
+    }
+
+    @Test
+    void independentWorkerRecoversExpiredClaimAndCommitsOnlyOneTenantReceipt(@TempDir Path directory)
+            throws Exception {
+        String consumer = "deskverify-ticket-audit";
+        OutboxMessage message = message(
+                "00000000-0000-0000-0000-000000000001", "tenant-acme", "ticket.created");
+        appendInTransaction(message);
+        OutboxClaim abandoned = repository.claimPending(
+                1, "terminated-worker", Instant.now().plusSeconds(60)).getFirst();
+        jdbc.update("insert into inbox_event(tenant_id, consumer_name, event_id) values(?, ?, ?)",
+                "tenant-other", consumer, message.id());
+
+        String executable = Path.of(System.getProperty("java.home"), "bin",
+                File.separatorChar == '\\' ? "java.exe" : "java").toString();
+        String classpath = System.getProperty("surefire.test.class.path",
+                System.getProperty("java.class.path"));
+        Path marker = directory.resolve("deskverify-outbox.ready");
+        try (ServerSocket occupiedBackendPort = new ServerSocket(0)) {
+            var launch = new ProcessBuilder(
+                    executable, "-Djava.io.tmpdir=" + directory, "-cp", classpath,
+                    "com.echomind.EchoMindJavaApplication", "--outbox-worker")
+                    .redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.DISCARD);
+            var env = launch.environment();
+            env.put("SERVER_PORT", Integer.toString(occupiedBackendPort.getLocalPort()));
+            env.put("ECHOMIND_DB_URL", MYSQL.getJdbcUrl());
+            env.put("ECHOMIND_DB_USERNAME", MYSQL.getUsername());
+            env.put("ECHOMIND_DB_PASSWORD", MYSQL.getPassword());
+            env.put("ECHOMIND_OUTBOX_LEASE_DURATION", "PT5S");
+            env.put("ECHOMIND_OUTBOX_POLL_DELAY_MS", "100");
+            Process worker = launch.start();
+            try {
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
+                while (!Files.isRegularFile(marker) && worker.isAlive() && System.nanoTime() < deadline) {
+                    Thread.sleep(50);
+                }
+                assertThat(Files.isRegularFile(marker))
+                        .as("independent worker publishes a DB-ready heartbeat").isTrue();
+                assertThat(worker.isAlive()).isTrue();
+                assertAttempts(message, 1);
+                assertThat(receiptCount(message.tenantId().value(), consumer, message.id())).isZero();
+
+                // Move the committed lease into the past to prove deterministic takeover, without sleeping.
+                jdbc.update("""
+                        update outbox_event set lease_until = current_timestamp(6) - interval 1 second
+                        where id = ? and claim_token = ?
+                        """, message.id(), abandoned.claimToken());
+                while (receiptCount(message.tenantId().value(), consumer, message.id()) == 0
+                        && worker.isAlive() && System.nanoTime() < deadline) {
+                    Thread.sleep(50);
+                }
+                assertThat(receiptCount(message.tenantId().value(), consumer, message.id())).isOne();
+                assertThat(receiptCount("tenant-other", consumer, message.id())).isOne();
+                assertAttempts(message, 2);
+                assertThat(jdbc.queryForObject("""
+                        select state from outbox_event where id = ?
+                        """, String.class, message.id())).isEqualTo("PUBLISHED");
+                assertThatThrownBy(() -> repository.markPublished(
+                        message.id(), "terminated-worker", abandoned.claimToken()))
+                        .isInstanceOf(OutboxStateException.class);
+                assertThat(repository.claimPending(1, "third-worker", Instant.now().plusSeconds(5)))
+                        .isEmpty();
+            } finally {
+                if (worker.isAlive()) {
+                    worker.destroyForcibly();
+                }
+                assertThat(worker.waitFor(5, TimeUnit.SECONDS))
+                        .as("independent worker exits before its temporary directory is removed").isTrue();
+            }
+        }
+    }
+
+    private int receiptCount(String tenant, String consumer, String event) {
+        return jdbc.queryForObject("""
+                select count(*) from inbox_event
+                where tenant_id = ? and consumer_name = ? and event_id = ?
+                """, Integer.class, tenant, consumer, event);
+    }
+
+    @Test
+    void staleDeliveryRollsBackReceiptAndExistingReceiptIsNotDuplicated() {
+        String consumer = "deskverify-ticket-audit";
+        OutboxMessage message = message(
+                "00000000-0000-0000-0000-000000000001", "tenant-acme", "ticket.created");
+        String event = message.id();
+        String tenant = message.tenantId().value();
+        appendInTransaction(message);
+        OutboxClaim abandoned = repository.claimPending(
+                1, "old-worker", Instant.now().minusSeconds(1)).getFirst();
+        OutboxClaim current = repository.claimPending(
+                1, "new-worker", Instant.now().plusSeconds(60)).getFirst();
+
+        assertThatThrownBy(() -> repository.acknowledgeLocalDelivery(abandoned, "old-worker", consumer))
+                .isInstanceOf(OutboxStateException.class);
+        assertThat(receiptCount(tenant, consumer, event)).isZero();
+        assertThat(jdbc.queryForObject("""
+                select claim_token from outbox_event where id = ?
+                """, String.class, event)).isEqualTo(current.claimToken());
+
+        jdbc.update("insert into inbox_event(tenant_id, consumer_name, event_id) values(?, ?, ?)",
+                tenant, consumer, event);
+        repository.acknowledgeLocalDelivery(current, "new-worker", consumer);
+        assertThat(receiptCount(tenant, consumer, event)).isOne();
+        assertThat(jdbc.queryForObject("""
+                select state from outbox_event where id = ?
+                """, String.class, event)).isEqualTo("PUBLISHED");
     }
 
     @Test
