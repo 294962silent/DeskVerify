@@ -19,6 +19,7 @@ $requiredFiles = @(
     "docs/RELEASE_WINDOWS_V0_1_0.md",
     "docs/RELEASE_WINDOWS_V0_1_2.md",
     "docs/RELEASE_WINDOWS_V0_1_3.md",
+    "docs/RELEASE_WINDOWS_V0_1_4.md",
     "README.md",
     "LICENSE"
 )
@@ -33,7 +34,7 @@ foreach ($relativePath in $requiredFiles) {
 $composePath = Join-Path $root "compose.yml"
 if (Test-Path -LiteralPath $composePath -PathType Leaf) {
     $compose = Get-Content -LiteralPath $composePath -Raw
-    foreach ($service in @("mysql", "redis", "backend", "frontend")) {
+    foreach ($service in @("mysql", "redis", "backend", "frontend", "worker")) {
         if ($compose -notmatch "(?m)^  ${service}:\s*$") {
             $failures.Add("Compose service is missing: $service")
         }
@@ -105,9 +106,14 @@ if (-not $SkipComposeConfig -and
                     $failures.Add("$($expected.Name) must publish its configurable port on 127.0.0.1 only")
                 }
             }
+            $worker = $services.worker
+            if (-not $worker -or $worker.ports -or $worker.network_mode -eq "host" -or
+                    -not $worker.healthcheck.test -or $worker.healthcheck.disable) {
+                $failures.Add("worker must have a health check and must not publish a host port")
+            }
         }
     } catch {
-        $failures.Add("could not validate resolved compose ports")
+        $failures.Add("could not validate resolved compose services")
     } finally {
         $env:BACKEND_PORT = $savedBackendPort
         $env:FRONTEND_PORT = $savedFrontendPort

@@ -26,6 +26,7 @@ import com.echomind.saas.rag.domain.KnowledgeVersionStatus;
 import com.echomind.saas.rag.domain.KnowledgeVisibility;
 import com.echomind.skill.SkillManager;
 import com.echomind.tool.KnowledgeToolManager;
+import com.echomind.trace.RequestTraceStore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nimbusds.jose.JWSAlgorithm;
@@ -55,10 +56,12 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.greaterThan;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -105,6 +108,9 @@ class KnowledgeRagEndToEndTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private RequestTraceStore traceStore;
 
     @MockitoBean
     private AgentOrchestrator orchestrator;
@@ -220,14 +226,15 @@ class KnowledgeRagEndToEndTest {
                 .andExpect(jsonPath("$.hits[0].document_id").value(documentId))
                 .andExpect(jsonPath("$.hits[0].version_number").value(version))
                 .andExpect(jsonPath("$.hits[0].lexical_score").isNumber())
-                .andExpect(jsonPath("$.hits[0].vector_score").isNumber())
+                .andExpect(jsonPath("$.hits[0].vector_score", greaterThan(0.0)))
                 .andExpect(jsonPath("$.hits[0].rrf_score").isNumber())
                 .andExpect(jsonPath("$.hits[0].rerank_score").isNumber())
                 .andExpect(jsonPath("$.citations[0].citation_id").value("citation-1"))
                 .andExpect(jsonPath("$.citations[0].document_title")
                         .value("企业版续费与席位"))
                 .andExpect(jsonPath("$.citations[0].heading_path")
-                        .value("续费规则"));
+                        .value("续费规则"))
+                .andExpect(jsonPath("$.degraded_modes").isEmpty());
 
         when(memoryManager.getContext(anyString(), anyString(), anyString()))
                 .thenReturn(new MemoryContext(List.of(), List.of(), Map.of(), ""));
@@ -280,6 +287,57 @@ class KnowledgeRagEndToEndTest {
         assertThat(jdbc.queryForObject(
                 "select count(*) from knowledge_chunk where tenant_id = 'tenant-a'",
                 Integer.class)).isEqualTo(2);
+    }
+
+    @Test
+    void naturalCustomerChatCitesOnlyCurrentTenantEvidenceWithRealVectorRank() throws Exception {
+        String adminToken = token("admin-1", "tenant-a", "v2-fixture");
+        String customerToken = token("customer-1", "tenant-a", "v2-chat");
+        String question = "根据知识库，北辰企业版续费后，席位多久生效？请引用来源。";
+
+        String initial = mvc.perform(post("/api/v1/knowledge-documents")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "title", "北辰企业版续费与席位", "content",
+                                "# 续费规则\n\n北辰企业版续费后，席位在19分钟内生效。", "visibility", "TENANT"))))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        String documentId = objectMapper.readTree(initial).path("document_id").asText();
+        mvc.perform(post("/api/v1/knowledge-documents/{id}/publish", documentId)
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"version_number\":1}"))
+                .andExpect(status().isOk());
+        mvc.perform(post("/api/v1/knowledge-documents/{id}/versions", documentId)
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("content",
+                                "# 续费规则\n\n北辰企业版续费后，席位在47分钟内生效。"))))
+                .andExpect(status().isCreated());
+        mvc.perform(post("/api/v1/knowledge-documents/{id}/publish", documentId)
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"version_number\":2}"))
+                .andExpect(status().isOk());
+
+        String answer = mvc.perform(post("/chat")
+                        .header("Authorization", "Bearer " + customerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("message", question))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.grounded").value(true))
+                .andExpect(jsonPath("$.retrieval_degraded_modes").isEmpty())
+                .andExpect(jsonPath("$.citations[0].document_id").value(documentId))
+                .andExpect(jsonPath("$.citations[0].version_number").value(2))
+                .andReturn().getResponse().getContentAsString();
+        JsonNode response = objectMapper.readTree(answer);
+        assertThat(response.path("response").asText()).contains("47分钟", "[citation-1]")
+                .doesNotContain("19分钟");
+        when(orchestrator.getToolTrace(anyString(), any())).thenAnswer(invocation ->
+                traceStore.find(invocation.getArgument(0), invocation.getArgument(1)));
+        mvc.perform(get("/trace/tool/{requestId}", response.path("request_id").asText())
+                        .header("Authorization", "Bearer " + customerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.trace.tool_calls[0].vector_evidence_hits").value(1));
     }
 
     @Test

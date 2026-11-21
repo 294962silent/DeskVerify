@@ -114,7 +114,7 @@ if ($hasExistingData) {
     Set-DefaultValue $values "ECHOMIND_JWT_AUDIENCE" "echomind-api"
 }
 
-$values["DESKVERIFY_VERSION"] = "0.1.3"
+$values["DESKVERIFY_VERSION"] = "0.1.4"
 Set-DefaultValue $values "FRONTEND_PORT" "5173"
 Set-DefaultValue $values "BACKEND_PORT" "8080"
 Set-DefaultValue $values "LLM_FALLBACK_ENABLED" "true"
@@ -182,17 +182,24 @@ while ((Get-Date) -lt $deadline) {
         $backend = Invoke-WebRequest -UseBasicParsing -TimeoutSec 5 -Uri "http://127.0.0.1:$backendPort/actuator/health"
         $frontend = Invoke-WebRequest -UseBasicParsing -TimeoutSec 5 -Uri "http://127.0.0.1:$frontendPort/"
         if ($backend.StatusCode -eq 200 -and $frontend.StatusCode -eq 200) {
-            $ready = $true
-            break
+            $workerStatus = & docker compose --project-name $composeProject --env-file $envPath -f $composePath ps --format json worker 2>$null
+            if ($LASTEXITCODE -eq 0 -and $workerStatus) {
+                $worker = ($workerStatus -join "`n") | ConvertFrom-Json
+                if ($worker.State -eq "running" -and $worker.Health -eq "healthy") {
+                    $ready = $true
+                    break
+                }
+            }
         }
     } catch {
-        Start-Sleep -Seconds 5
+        # Compose health and HTTP endpoints may not be available yet.
     }
+    Start-Sleep -Seconds 5
 }
 
 if (-not $ready) {
     & docker compose --project-name $composeProject --env-file $envPath -f $composePath ps
-    throw "DeskVerify did not become healthy within five minutes. Run: docker compose --project-name $composeProject -f compose.yml logs"
+    throw "DeskVerify (including the Outbox worker) did not become healthy within five minutes. Run: docker compose --project-name $composeProject -f compose.yml logs"
 }
 
 Write-Host ""

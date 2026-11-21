@@ -2,8 +2,11 @@ package com.echomind.saas.rag.infrastructure;
 
 import com.echomind.config.EchoMindProperties;
 import com.echomind.saas.rag.application.EmbeddingUnavailableException;
+import java.io.File;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -11,6 +14,49 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 class OnnxBgeEmbeddingProviderTest {
+
+    @Test
+    void coldEmbeddingLoadsWithAContextClassLoaderMissingDependencyResources() throws Exception {
+        assumeModelPresent();
+        String executable = Path.of(System.getProperty("java.home"), "bin",
+                File.separatorChar == '\\' ? "java.exe" : "java").toString();
+        String classpath = System.getProperty("surefire.test.class.path",
+                System.getProperty("java.class.path"));
+        Process process = new ProcessBuilder(executable, "-cp", classpath,
+                ColdEmbeddingProbe.class.getName()).redirectErrorStream(true).start();
+        try {
+            assertThat(process.waitFor(45, TimeUnit.SECONDS)).isTrue();
+            String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            assertThat(process.exitValue()).as(output).isZero();
+            assertThat(output).contains("Loaded BGE ONNX embedding", "cold BGE vector dimensions=512");
+        } finally {
+            if (process.isAlive()) {
+                process.destroyForcibly();
+                process.waitFor(5, TimeUnit.SECONDS);
+            }
+        }
+    }
+
+    public static final class ColdEmbeddingProbe {
+        public static void main(String[] args) {
+            EchoMindProperties properties = new EchoMindProperties();
+            try (OnnxBgeEmbeddingProvider provider = new OnnxBgeEmbeddingProvider(properties)) {
+                Thread current = Thread.currentThread();
+                ClassLoader original = current.getContextClassLoader();
+                ClassLoader withoutDependencies = new ClassLoader(null) { };
+                current.setContextClassLoader(withoutDependencies);
+                try {
+                    double[] embedding = provider.embedQuery("北辰企业版续费后，席位多久生效？");
+                    assertThat(embedding).hasSize(512);
+                    assertThat(norm(embedding)).isCloseTo(1.0, within(0.0001));
+                    assertThat(current.getContextClassLoader()).isSameAs(withoutDependencies);
+                    System.out.println("cold BGE vector dimensions=" + embedding.length);
+                } finally {
+                    current.setContextClassLoader(original);
+                }
+            }
+        }
+    }
 
     @Test
     void producesNormalizedDeterministic512DimensionalEmbeddings() {

@@ -36,6 +36,11 @@ function docker {
     } elseif ($args[0] -ceq "compose" -and $args -ccontains "up") {
         $trace.Add("up")
         Assert-Test ($args[1] -ceq "--project-name" -and $args[2] -ceq "deskverify") "unexpected Compose project"
+    } elseif ($args[0] -ceq "compose" -and ($args[-4..-1] -join " ") -ceq "ps --format json worker") {
+        $trace.Add("worker-health")
+        $calls = @($trace | Where-Object { $_ -ceq "worker-health" }).Count
+        $health = if ($WorkerStartsSlow -and $calls -eq 1) { "starting" } else { "healthy" }
+        @{ State = "running"; Health = $health } | ConvertTo-Json -Compress
     } else {
         throw "Unexpected Docker invocation in bootstrap test."
     }
@@ -47,13 +52,19 @@ function Invoke-WebRequest([switch]$UseBasicParsing, [int]$TimeoutSec, [string]$
     return @{ StatusCode = 200 }
 }
 
+function Start-Sleep([int]$Seconds) {
+    Assert-Test ($Seconds -eq 5) "unexpected readiness retry delay"
+    $trace.Add("sleep")
+}
+
 function Test-Bootstrap {
     param(
         [string]$Name,
         [AllowNull()][string]$InitialEnv,
         [string[]]$VolumeNames = @(),
         [int]$DiscoveryExit = 0,
-        [string]$ExpectedError = ""
+        [string]$ExpectedError = "",
+        [switch]$WorkerStartsSlow
     )
 
     $trace = [System.Collections.Generic.List[string]]::new()
@@ -102,10 +113,12 @@ $global:LASTEXITCODE = 0
             }
         } else {
             Assert-Test (-not $startupError) "startup failed with valid inputs"
-            Assert-Test (($trace -join ",") -ceq "info,volumes,download,jwt,up,health,health") "unexpected bootstrap steps"
+            $expected = "info,volumes,download,jwt,up,health,health,worker-health"
+            if ($WorkerStartsSlow) { $expected += ",sleep,health,health,worker-health" }
+            Assert-Test (($trace -join ",") -ceq $expected) "unexpected bootstrap steps"
             Assert-Test (Test-Path -LiteralPath (Join-Path $case ".deskverify/demo-token.txt")) "did not write demo state"
             $saved = Read-DotEnv -Path $envFile
-            Assert-Test ($saved["DESKVERIFY_VERSION"] -ceq "0.1.3") "did not set the current release version"
+            Assert-Test ($saved["DESKVERIFY_VERSION"] -ceq "0.1.4") "did not set the current release version"
             foreach ($field in $critical.Keys) {
                 Assert-Test (-not [string]::IsNullOrWhiteSpace($saved[$field])) "did not supply a required setting: $field"
                 if ($InitialEnv) {
@@ -134,6 +147,7 @@ try {
     $restore = "restore the original .env"
     $discovery = "could not verify existing DeskVerify Docker volumes"
     Test-Bootstrap -Name "fresh" -VolumeNames @()
+    Test-Bootstrap -Name "waits-for-worker-health" -WorkerStartsSlow
     Test-Bootstrap -Name "unrelated-volumes" -VolumeNames @("other_mysql-data", "deskverify_mysql-data-backup")
     Test-Bootstrap -Name "existing-mysql-without-env" -VolumeNames @("deskverify_mysql-data") -ExpectedError $restore
     Test-Bootstrap -Name "existing-backend-with-empty-env" -InitialEnv "" `

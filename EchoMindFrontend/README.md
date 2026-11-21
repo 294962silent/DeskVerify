@@ -13,7 +13,7 @@ DeskVerify 的 Vue 3 + Vite 管理端。
 
 ## Release Runtime
 
-`v0.1.3` 推荐在仓库或发布包根目录用 PowerShell 7 启动：
+`v0.1.4` 推荐在仓库或发布包根目录用 PowerShell 7 启动：
 
 ```powershell
 .\start.ps1

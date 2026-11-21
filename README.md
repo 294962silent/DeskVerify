@@ -25,7 +25,7 @@ DeskVerify（原 EchoMind）是一个面向企业 SaaS 客服场景的 RAG Agent
 - **身份与隔离**：JWT Resource Server、租户成员校验、角色授权、Trace/评测所有权隔离。
 - **可靠平台基座**：MySQL 幂等记录、租户级 Inbox、事务 Outbox、claim/lease fencing。
 - **前后端分离**：Vue 前端支持聊天引用链、知识库管理、Commerce、工单、监控和评测页面。
-- **可部署**：根目录 Docker Compose 启动 MySQL、Redis、Java 后端和 Nginx/Vue 前端。
+- **可部署**：根目录 Docker Compose 启动 MySQL、Redis、Java 后端、独立 Outbox worker 和 Nginx/Vue 前端。
 
 ## 技术栈
 
@@ -58,7 +58,7 @@ DeskVerify 企业 SaaS 智能支持平台/
 └── README.md
 ```
 
-## Windows v0.1.3 一键启动
+## Windows v0.1.4 一键启动
 
 要求：
 
@@ -121,7 +121,7 @@ OpenCode Go 密钥不是原生 DeepSeek 密钥，不能用于客服对话。
 在 Swagger 中点击 **Authorize** 并填写 DeskVerify JWT（不带 `Bearer` 前缀），
 即可在现有权限内调试接口。Swagger 的脚本和样式随应用本地提供。
 
-详细说明见 [Windows v0.1.3 Release](./docs/RELEASE_WINDOWS_V0_1_3.md) 和
+详细说明见 [Windows v0.1.4 Release](./docs/RELEASE_WINDOWS_V0_1_4.md) 和
 [本地开发与验证](./docs/LOCAL_DEVELOPMENT.md)。
 如遇 `RemoteSigned` 阻止脚本，请按[下载阻止说明](./docs/RELEASE_WINDOWS_V0_1_3.md#windows-download-blocking)处理，
 不要更改全局执行策略。

@@ -51,6 +51,19 @@ public class JdbcOutboxRepository implements OutboxRepository {
     @Override
     public List<OutboxClaim> claimPending(
             int limit, String leaseOwner, Instant leaseUntil) {
+        return claimPending(limit, leaseOwner, Objects.requireNonNull(leaseUntil), null);
+    }
+
+    List<OutboxClaim> claimWithLease(String leaseOwner, java.time.Duration lease) {
+        long leaseMicros = Math.multiplyExact(lease.toMillis(), 1000);
+        if (leaseMicros <= 0) {
+            throw new IllegalArgumentException("outbox lease must be positive");
+        }
+        return claimPending(1, leaseOwner, null, leaseMicros);
+    }
+
+    private List<OutboxClaim> claimPending(
+            int limit, String leaseOwner, Instant leaseUntil, Long leaseMicros) {
         List<OutboxClaim> claimed = transactions.execute(status -> {
             List<String> ids = jdbc.query("""
                     select id
@@ -65,7 +78,7 @@ public class JdbcOutboxRepository implements OutboxRepository {
                 return List.of();
             }
 
-            Timestamp leaseTimestamp = Timestamp.from(leaseUntil);
+            Timestamp leaseTimestamp = leaseUntil == null ? null : Timestamp.from(leaseUntil);
             Map<String, String> claimTokens = new LinkedHashMap<>();
             for (String id : ids) {
                 String claimToken = UUID.randomUUID().toString();
@@ -74,10 +87,10 @@ public class JdbcOutboxRepository implements OutboxRepository {
                         set state = 'IN_FLIGHT',
                             lease_owner = ?,
                             claim_token = ?,
-                            lease_until = ?,
+                            lease_until = coalesce(?, timestampadd(microsecond, ?, current_timestamp(6))),
                             attempts = attempts + 1
                         where id = ?
-                        """, leaseOwner, claimToken, leaseTimestamp, id);
+                        """, leaseOwner, claimToken, leaseTimestamp, leaseMicros, id);
                 if (updated != 1) {
                     throw new OutboxStateException("outbox claim was not acquired");
                 }
@@ -106,6 +119,19 @@ public class JdbcOutboxRepository implements OutboxRepository {
                     }, ids.toArray());
         });
         return Objects.requireNonNull(claimed, "transaction result");
+    }
+
+    void acknowledgeLocalDelivery(OutboxClaim claim, String leaseOwner, String consumerName) {
+        OutboxMessage message = claim.message();
+        transactions.executeWithoutResult(status -> {
+            jdbc.update("""
+                    insert into inbox_event(tenant_id, consumer_name, event_id)
+                    values (?, ?, ?)
+                    on duplicate key update received_at = received_at
+                    """, message.tenantId().value(), consumerName, message.id());
+            // Keep receipt creation in this transaction so a stale claim cannot leave a receipt.
+            markPublished(message.id(), leaseOwner, claim.claimToken());
+        });
     }
 
     @Override
